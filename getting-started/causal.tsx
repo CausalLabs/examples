@@ -198,16 +198,31 @@ class ImpressionImpl implements Impression<FeatureNames> {
       _WireArgs[keyof _WireArgs]
     ][]) {
       const output = wireOutputs[wireName];
-      if (output == undefined && !impressionJson.maybeEmpty)
-        log.error("unexpected undefined wire output for " + wireName);
       const featureName = wireToFeatureName(wireName);
-      this[featureName] = new allFeatureTypes[featureName](
-        this,
-        args as any, // eslint-disable-line
-        (output == undefined
-          ? { _impressionId: "errNoOutputs" }
-          : output) as any // eslint-disable-line
-      ) as any; // eslint-disable-line
+
+      let featureHasData;
+      switch (impressionJson.impressionType) {
+        case "error":
+          featureHasData = defaultFlags[featureName];
+          break;
+        case "loading":
+          featureHasData = false;
+          break;
+        case "real":
+          featureHasData = output != "OFF" && output != undefined;
+          if (output == undefined)
+            log.warn("unexpected undefined or null output for " + featureName);
+      }
+
+      if (featureHasData) {
+        this[featureName] = new allFeatureTypes[featureName](
+          this,
+          args as any, // eslint-disable-line
+          (output == undefined
+            ? { _impressionId: "errNoOutputs" }
+            : output) as any // eslint-disable-line
+        ) as any; // eslint-disable-line
+      }
     }
   }
 
@@ -365,9 +380,9 @@ export const allFeatureTypes = {
  * Do not use - only exported for testing
  */
 export type _WireOutputs = {
-    RatingBox?:RatingBoxWireOutputs;
-    ProductInfo?:ProductInfoWireOutputs;
-    Feature2?:Feature2WireOutputs;
+    RatingBox?:RatingBoxWireOutputs | "OFF";
+    ProductInfo?:ProductInfoWireOutputs | "OFF";
+    Feature2?:Feature2WireOutputs | "OFF";
 }
 
 type Impression<T extends FeatureNames> =
@@ -711,7 +726,6 @@ class Cache {
     let allCached = true;
     for (const k of Object.keys(wireArgs) as (keyof _WireArgs)[]) {
       const featureName: FeatureNames = wireToFeatureName(k);
-      if (flags[featureName] === false) continue;
 
       const output = this.backingStore.get(k);
       if (output == undefined) {
@@ -745,21 +759,13 @@ class Cache {
 
     for (const [k, v] of Object.entries(wireOutputs) as [
       keyof _WireOutputs,
-      _WireOutputs[keyof _WireOutputs] | "off"
+      _WireOutputs[keyof _WireOutputs]
     ][]) {
-      if (v == "off") this.backingStore.del(k);
-      else {
-        const wireArg = wireArgs[k];
-        if (wireArg == undefined)
-          log.debug(4, "ignoring excess output args - unit test?");
-        else {
-          const identity = this.getOutputIdentity(
-            wireToFeatureName(k),
-            wireArg
-          );
-          if (identity != undefined && !k.startsWith("_"))
-            this.backingStore.set(k, identity, v, nextExpiry);
-        }
+      const wireArg = wireArgs[k];
+      if (wireArg != undefined) {
+        const identity = this.getOutputIdentity(wireToFeatureName(k), wireArg);
+        if (identity != undefined && !k.startsWith("_"))
+          this.backingStore.set(k, identity, v, nextExpiry);
       }
     }
   }
@@ -895,12 +901,6 @@ export type FetchResponse = {
  * Causal configuration options.
  */
 export type CausalOptions = {
-  /**
-   * Set if this request is being rendered server side (SSR).
-   * By default, SSR will be set true if the window object is undefined.
-   */
-  ssr?: boolean;
-
   /**
    * By default Causal will send all network requests to the value compiled into the generated API.
    * This default value comes from the url associated with the impression server for each environment.
@@ -1057,7 +1057,17 @@ const defaultNetwork = {
 };
 let network = defaultNetwork;
 
-let session: undefined | { args: SessionArgs };
+let session:
+  | undefined
+  | {
+      args: SessionArgs & {
+        // implicit arguments
+        userAgent?: string;
+        ipAddress?: string;
+        entryUrl?: string;
+        clientType?: string;
+      };
+    };
 
 // simpler to have a no-op cache then check for undefined everywhere
 let _cache: Cache = new Cache(undefined, undefined);
@@ -1070,10 +1080,18 @@ let _cache: Cache = new Cache(undefined, undefined);
  * It is safe to call `initRequest` multiple times. A good place to call `initRequest` is in a high level/root component like an App component or a always called data fetching function like getServerSideProps.
  *
  * @param sessionArgs The session args for this request. This includes deviceId as well as any other session args that were defined in the FDL file.
+ * @param incomingMessage If doing SSR, an IncomingMessage (i.e the request object). See: https://nodejs.org/api/http.html#class-httpincomingmessage
  * @param options Configurable options.
  */
 export function initRequest(
   sessionArgs: SessionArgs,
+  incomingMessage?: {
+    headers: { [key: string]: string | string[] | undefined };
+    url?: string;
+    socket: {
+      remoteAddress?: string;
+    };
+  },
   options?: CausalOptions,
   /** @internal */
   debugOptions?: CausalDebugOptions
@@ -1091,7 +1109,15 @@ export function initRequest(
   network.baseUrl = options?.baseUrl
     ? normalizeUrl(options?.baseUrl)
     : defaultNetwork.baseUrl;
-  misc.ssr = options?.ssr ?? defaultSSR;
+
+  const ssr = incomingMessage != undefined;
+  if (typeof window == "undefined" && !ssr) {
+    log.warn(
+      "Looks like you are rendering server side (SSR), did you forget to pass incomingMessage to initRequest? " + 
+      "This message can also appear during a static build of a CSR page, in which case you can ignore it."
+    );
+  }
+  misc.ssr = ssr;
 
   const changed =
     session == undefined ||
@@ -1108,7 +1134,22 @@ export function initRequest(
     log.warn("backing store set, but outputExpirySeconds is 0. Not caching");
   }
 
-  session = { args: sessionArgs };
+  if (!incomingMessage) {
+    session = {
+      args: sessionArgs,
+    };
+  } else {
+    // if this is being rendered server side, pass along some data from the request
+    session = {
+      args: {
+        ...sessionArgs,
+        userAgent: incomingMessage?.headers["user-agent"] as string,
+        clientType: "typescript",
+        ipAddress: incomingMessage?.socket.remoteAddress,
+        entryUrl: incomingMessage?.url,
+      },
+    };
+  }
 
   // not using any type of {...one, ...two} constructs because
   // that will asssign explicitly undefined values
@@ -1148,7 +1189,6 @@ export function initRequest(
     newEvtSource: debugOptions?.newEvtSource ?? defaultNetwork.newEvtSource,
   };
 
-  const ssr = options?.ssr ?? defaultSSR;
   misc = {
     ssr,
     immediatelyRequestFlags: debugOptions?.immediatelyRequestFlags ?? !ssr,
@@ -1171,7 +1211,20 @@ export function initRequest(
   if (_cache) _cache?.deleteAll(true);
   _cache = new Cache(sessionArgs, cacheOptions);
 
-  if (misc.immediatelyRequestFlags) requestFlagsOnInit();
+  if (misc.immediatelyRequestFlags && !_cache.backingStore.dontStore()) {
+    requestFlags()
+      .then(
+        () => {
+          undefined;
+        },
+        () => {
+          log.error("request flags failed");
+        }
+      )
+      .catch(() => {
+        log.error("request flags failed with exception");
+      });
+  }
 }
 
 //#endregion
@@ -1230,7 +1283,7 @@ export type ImpressionJSON<T extends FeatureNames> = {
   t?: T; // unused - suppresses T is unused error
 
   /** @internal */
-  maybeEmpty: boolean;
+  impressionType: "real" | "loading" | "error";
 
   /** @internal */
   deviceId: string;
@@ -1246,7 +1299,7 @@ function loadingImpression<T extends FeatureNames>({
   deviceId,
 }: Pick<ImpressionJSON<T>, "deviceId">): Impression<T> {
   const impression = new ImpressionImpl({
-    maybeEmpty: true,
+    impressionType: "loading",
     deviceId,
     wireArgs: {},
     wireOutputs: {} as _WireOutputs,
@@ -1259,9 +1312,9 @@ function errorImpression<T extends FeatureNames>({
   wireArgs: args,
 }: Pick<ImpressionJSON<T>, "deviceId" | "wireArgs">): Impression<T> {
   const impression = new ImpressionImpl({
-    maybeEmpty: true,
+    impressionType: "error",
     deviceId,
-    wireArgs: args,
+    wireArgs: cleanWireArgs(args),
     wireOutputs: {} as _WireOutputs,
   });
   return impression as unknown as Impression<T>;
@@ -1278,13 +1331,13 @@ function notInitalizedImpression<T extends FeatureNames>(): Impression<T> {
  * Convert a [[ImpressionJSON]] back to an impression.
  */
 export function toImpression<T extends FeatureNames>({
-  maybeEmpty,
+  impressionType,
   deviceId,
   wireArgs,
   wireOutputs: outputs,
 }: ImpressionJSON<T>): Impression<T> {
   const impression = new ImpressionImpl({
-    maybeEmpty,
+    impressionType,
     deviceId,
     wireArgs,
     wireOutputs: outputs as _WireOutputs,
@@ -1298,24 +1351,6 @@ type IServerResponse = _WireOutputs & {
 
 // Currently only one kind of fetch option now, do we want to get the complete set of flags
 type FetchOptions = "flags";
-
-function requestFlagsOnInit() {
-  if (!misc.immediatelyRequestFlags || _cache.backingStore.dontStore()) {
-    log.warn("ignoring unexpected call to requestFlagsOnInit");
-  }
-  requestFlags()
-    .then(
-      () => {
-        undefined;
-      },
-      () => {
-        log.error("request flags failed");
-      }
-    )
-    .catch(() => {
-      log.error("request flags failed with exception");
-    });
-}
 
 /**
  * Async function to get the on/off flags associated with a feature.
@@ -1355,6 +1390,20 @@ export async function requestFlags(): Promise<{
   return { flags: responseFlags ?? _cache.flags() ?? defaultFlags, error };
 }
 
+function cleanWireArgs(wireArgs: _WireArgs | undefined): _WireArgs {
+  // the line below removes all undefined attributes
+  // i.e. {a:1, b:undefined} => {a:1}
+  // we do this because the wire args are returned back to the client and
+  // some frameworks do not like undefined across serialization boundaries
+  // most notably, next.js, see:
+  //   https://github.com/vercel/next.js/discussions/11209
+  //
+  // this should be reasonably quick, and this should not be a huge
+  // increase over all the other serialization that will happen as
+  // part of the request
+  return wireArgs == undefined ? {} : JSON.parse(JSON.stringify(wireArgs));
+}
+
 /**
  * Make the actual network call to the impression server to get feature and flag information
  *
@@ -1382,6 +1431,9 @@ async function iserverFetch({
   try {
     let result: FetchResponse | undefined = undefined;
     let fetchExceptionError = "";
+
+    wireArgs = cleanWireArgs(wireArgs);
+
     try {
       const body: {
         fetchOptions: FetchOptions[] | undefined;
@@ -1391,8 +1443,8 @@ async function iserverFetch({
       } = {
         fetchOptions,
         args: sessionArgs,
-        requests: wireArgs,
         impressionId,
+        requests: wireArgs,
       };
       result = await network.fetch(network.baseUrl + "features", {
         method: "POST",
@@ -1460,14 +1512,12 @@ async function iserverFetch({
       log.debug(4, "fetch outputs:", wireOutputs);
     }
 
-    const impression = wireArgs
-      ? new ImpressionImpl({
-          maybeEmpty: false,
-          deviceId: sessionArgs.deviceId,
-          wireArgs: wireArgs,
-          wireOutputs,
-        })
-      : undefined;
+    const impression = new ImpressionImpl({
+      impressionType: "real",
+      deviceId: sessionArgs.deviceId,
+      wireArgs,
+      wireOutputs,
+    });
 
     let returnFlags = wireToFlags(responseFlags);
     if (fetchOptions?.includes("flags") && responseFlags == undefined) {
@@ -1500,17 +1550,24 @@ function sendImpressionBeacon<T extends FeatureNames>(
   const impressionIdMap: {
     [idx: string]: { impression: string; newImpression: string | undefined };
   } = {};
+
+  let count = 0;
   Object.entries(outputs).forEach(([k, v]) => {
-    impressionIdMap[k] = {
-      impression: v?._impressionId as string, // older versions of TS need this cast
-      newImpression: impressionId,
-    };
+    if (v != "OFF" && v != undefined) {
+      count += 1;
+      impressionIdMap[k] = {
+        impression: v?._impressionId as string, // older versions of TS need this cast
+        newImpression: impressionId,
+      };
+    }
   });
 
-  network.sendBeacon({
-    deviceId: impression.deviceId,
-    impressions: impressionIdMap,
-  });
+  if (count > 0) {
+    network.sendBeacon({
+      deviceId: impression.deviceId,
+      impressions: impressionIdMap,
+    });
+  }
 }
 
 function getCachedImpression<T extends FeatureNames>(
@@ -1525,8 +1582,8 @@ function getCachedImpression<T extends FeatureNames>(
 
   return {
     cachedImpression: toImpression({
-      maybeEmpty: false,
-      wireArgs: wireArgs,
+      impressionType: "real", // we only cache real impressions, not errors or loads
+      wireArgs,
       deviceId: sessionArgs.deviceId,
       wireOutputs: cachedOutputs,
     }),

@@ -21,7 +21,7 @@ type SSRProps = {
 export const getServerSideProps: GetServerSideProps<SSRProps> = async (
   context
 ) => {
-  initRequest({ deviceId: getOrGenDeviceId(context) });
+  initRequest({ deviceId: getOrGenDeviceId(context) }, context.req);
   const product = products[context.query.pid as keyof typeof products];
   if (product == undefined) {
     return {
@@ -58,14 +58,18 @@ export default function ProductInfo({ json, product }: SSRProps) {
 
       <h3>{impression.RatingBox?.callToAction}</h3>
 
-      <RatingWidget
-        curRating={rating}
-        onSetRating={(newRating) => {
-          setRating(newRating);
-          impression.RatingBox?.signalRating({ stars: rating });
-        }}
-      />
-      <a href={"ssr-next-example?pid=" + product.next}>Rate Another</a>
+      {impression.RatingBox && (
+        <>
+          <RatingWidget
+            curRating={rating}
+            onSetRating={(newRating) => {
+              setRating(newRating);
+              impression.RatingBox?.signalRating({ stars: rating });
+            }}
+          />
+          <a href={"ssr-next-example?pid=" + product.next}>Rate Another</a>
+        </>
+      )}
     </div>
   );
 }
