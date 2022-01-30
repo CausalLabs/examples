@@ -5,14 +5,32 @@ import boto3
 import argparse
 import sys
 import re
+import os
 
+def get_client():
+    if 'EXTAGENT_ACCESS' in os.environ:
+        sts_client = boto3.client('sts', 
+        aws_access_key_id=os.getenv('EXTAGENT_ACCESS'),
+        aws_secret_access_key=os.getenv('EXTAGENT_SECRET'),
+        region_name='us-east-2')
 
-bucket = "s3://causal-getting-started"
-client = boto3.client('athena')
+        role = sts_client.assume_role(RoleArn="arn:aws:iam::530459586293:role/CausalSandboxWarehouse", RoleSessionName="sandbox-warehouse-cron")
 
+        credentials = role['Credentials']
+        aws_access_key_id = credentials['AccessKeyId']
+        aws_secret_access_key = credentials['SecretAccessKey']
+        aws_session_token = credentials['SessionToken']
 
-def run_query(query, database, s3_output):
-    client = boto3.client('athena')
+        return boto3.client('athena',
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            aws_session_token=aws_session_token,
+            region_name='us-east-2')
+    else:
+        return boto3.client('athena')
+
+def run_query(query, database, s3_output, client):
+
     response = client.start_query_execution(
         QueryString=query,
         QueryExecutionContext={
@@ -34,6 +52,8 @@ def find_s3_root(filename):
     return None
             
 if __name__ == "__main__":
+
+    client = get_client()
 
     parser = argparse.ArgumentParser(description='Executes Causal SQL statements to create tables in a database');
     parser.add_argument('sql_file', type=str, help='The sql file')
@@ -61,7 +81,6 @@ if __name__ == "__main__":
         if (args.pretend):
             print(query);
         else:
-            client = boto3.client('athena')
             response=client.start_query_execution(
                 QueryString=query,
                 ResultConfiguration={
@@ -78,4 +97,4 @@ if __name__ == "__main__":
         if args.pretend:
             print(stmt)
         else:
-            run_query(stmt, args.database, output_location)
+            run_query(stmt, args.database, output_location, client)

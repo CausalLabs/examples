@@ -10,6 +10,7 @@ import { RatingWidget } from "../components/RatingWidget";
 import { getOrGenDeviceId } from "../utils";
 
 type SSRProps = {
+  showRatingBox: boolean;
   product: typeof products[keyof typeof products];
   CTA: string;
   deviceId: string;
@@ -20,16 +21,19 @@ export const getServerSideProps: GetServerSideProps<SSRProps> = async (
   context
 ) => {
   const deviceId = getOrGenDeviceId(context);
-  initRequest({ deviceId });
+  initRequest({ deviceId }, context.req);
   const product = products[context.query.pid as keyof typeof products];
   const impressionId = "imp-1234";
 
   const query = queryBuilder().getRatingBox({ product: product.name });
-  const { impression, error } = await requestImpression(query, impressionId);
+  const { impression, flags, error } = await requestImpression(
+    query,
+    impressionId
+  );
 
-  if (product == undefined || impression.RatingBox == undefined) {
+  if (product == undefined) {
     return {
-      redirect: { destination: "ssr-example?pid=iphone" },
+      redirect: { destination: "static-events-next-example?pid=iphone" },
     } as any; // eslint-disable-line
   }
 
@@ -41,15 +45,17 @@ export const getServerSideProps: GetServerSideProps<SSRProps> = async (
   }
 
   const props: SSRProps = {
+    showRatingBox: flags.RatingBox,
     deviceId,
     impressionId,
     product,
-    CTA: impression.RatingBox?.callToAction,
+    CTA: impression.RatingBox?.callToAction ?? "",
   };
   return { props };
 };
 
 export default function ProductInfo({
+  showRatingBox,
   deviceId,
   product,
   CTA,
@@ -63,23 +69,27 @@ export default function ProductInfo({
       <img src={product.url} alt="product image" />
       <h3>{CTA}</h3>
 
-      <RatingWidget
-        curRating={rating}
-        onSetRating={(newRating) => {
-          setRating(newRating);
-          RatingBox.signalRating(deviceId, impressionId, { stars: rating });
+      {showRatingBox && (
+        <>
+          <RatingWidget
+            curRating={rating}
+            onSetRating={(newRating) => {
+              setRating(newRating);
+              RatingBox.signalRating(deviceId, impressionId, { stars: rating });
 
-          // For autocomplete convenience, you can also reference the feature
-          // classes through the allFeatureTypes variable.
-          //
-          // allFeatureTypes.RatingBox.signalRating(deviceId, impressionId, {
-          //   stars: rating,
-          // });
-        }}
-      />
-      <a href={"static-events-next-example?pid=" + product.next}>
-        Rate Another
-      </a>
+              // For autocomplete convenience, you can also reference the feature
+              // classes through the allFeatureTypes variable.
+              //
+              // allFeatureTypes.RatingBox.signalRating(deviceId, impressionId, {
+              //   stars: rating,
+              // });
+            }}
+          />
+          <a href={"static-events-next-example?pid=" + product.next}>
+            Rate Another
+          </a>
+        </>
+      )}
     </div>
   );
 }
