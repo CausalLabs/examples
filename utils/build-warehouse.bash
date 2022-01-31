@@ -42,6 +42,7 @@ find $TMP_DIR -size 0 -print -delete
 for f in $TMP_DIR/*.sql; do
     echo "Processing $f file..";
     aws athena start-query-execution --query-string "$(<$f)" --result-configuration "OutputLocation=$OUTPUT_LOCATION" --query-execution-context Database=$DB_NAME
+    sleep 2
 done
 
 # cleanup
