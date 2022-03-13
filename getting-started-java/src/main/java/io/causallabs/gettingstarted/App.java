@@ -4,7 +4,7 @@
 package io.causallabs.gettingstarted;
 
 import io.causallabs.generated.CausalClient;
-import io.causallabs.generated.RatingBox_Impl;
+import io.causallabs.generated.RatingBoxImpl;
 
 public class App {
     public String getGreeting() {
@@ -17,7 +17,7 @@ public class App {
         CausalClient cc = CausalClient.getInstance();
 
         // construct an "Impression" object for each impression you are requesting
-        RatingBox_Impl imp = new RatingBox_Impl("iPhone");
+        RatingBoxImpl imp = new RatingBoxImpl("iPhone");
         // make the request
         cc.request("javaTestDevice", imp);
         if (imp.getError() != null) {
