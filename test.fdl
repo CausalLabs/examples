@@ -1,9 +1,9 @@
 ## Just some sample code that we use in the developer docs
 
-feature Simple_button
+feature SimpleButton
 {
     args {
-        call_to_action: String!
+        callToAction: String!
     }
     output {
         color: String! = "blue"
@@ -18,11 +18,11 @@ session {
     }
 
     plugin java "ComputeCustomerData" {
-        home_zip: String
-        membership_level: String
+        homeZip: String
+        membershipLevel: String
     }
 
-    event Add_to_cart {
+    event AddToCart {
         item: ID!
     }
 }

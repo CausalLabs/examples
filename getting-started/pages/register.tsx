@@ -23,7 +23,7 @@ export function RegistrationPage() {
   return (
     <div>
       <RegisterDevice
-        userId={query.userId as string}
+        causalUserId={query.userId as string}
         deviceId={deviceId}
       ></RegisterDevice>
     </div>

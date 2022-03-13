@@ -11,11 +11,11 @@ feature RatingBox {
     
     output {
         "The text next to the stars that prompts the visitor to rate the product"
-        call_to_action: String! = "Rate this product!"
+        callToAction: String! = "Rate this product!"
     }
 
     "Occurs each time a rating is collected"
-    event rating {
+    event Rating {
         stars: Int! 
     }
 }
@@ -29,16 +29,16 @@ Another feature just for demonstration purposes
 feature Feature2 {
     args {
         "Example args"
-        example_arg: String!
+        exampleArg: String!
     }
     
     output {
         "Example output"
-        example_output: String! = "Example output"
+        exampleOutput: String! = "Example output"
     }
 
     "Example event"
-    event example_event {
+    event ExampleEvent {
         data: String! 
     }
 }

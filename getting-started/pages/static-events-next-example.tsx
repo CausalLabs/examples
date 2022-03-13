@@ -75,7 +75,9 @@ export default function ProductInfo({
             curRating={rating}
             onSetRating={(newRating) => {
               setRating(newRating);
-              RatingBox.signalRating(deviceId, impressionId, { stars: rating });
+              RatingBox.signalRating({ deviceId }, impressionId, {
+                stars: rating,
+              });
 
               // For autocomplete convenience, you can also reference the feature
               // classes through the allFeatureTypes variable.

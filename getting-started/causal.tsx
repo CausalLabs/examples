@@ -10,7 +10,7 @@ import React, { useEffect, useReducer, useRef, useState } from "react";
 to collect ratings from our users
  *   */
 type RatingBoxWireOutputs = {
-  readonly call_to_action: string;
+  readonly callToAction: string;
   readonly _impressionId: string;
 }
 
@@ -44,18 +44,18 @@ export class RatingBox {
     signalRating( { stars } 
         : {  stars : number  } ) : void
     {
-      RatingBox.signalRating( this.#_impression.deviceId, this.#_impressionId, { stars, } );
+      RatingBox.signalRating( this.#_impression.userId, this.#_impressionId, { stars, } );
     }
     /** Occurs each time a rating is collected   
       *  */
-    static signalRating( deviceId : string, impressionId : string,  { stars } 
+    static signalRating( userId : UserIds, impressionId : string,  { stars } 
         : {  stars : number  } ) : void
     {
         const _data = { 
+          id : userId,
           feature: "RatingBox",
-          event: "rating",
+          event: "Rating",
           impressionId: impressionId,
-          deviceId: deviceId,
           args: {  stars: stars  }
         };
       network.sendBeacon(_data);
@@ -68,8 +68,8 @@ export class RatingBox {
     this.#_impression = impression;
     this.#_impressionId = outputs._impressionId;
     this.product = args.product;
-    if (outputs.call_to_action != undefined) {
-        this.callToAction = outputs.call_to_action;
+    if (outputs.callToAction != undefined) {
+        this.callToAction = outputs.callToAction;
     } else {
         this.callToAction = "Rate this product!";
     }
@@ -107,7 +107,7 @@ export class ProductInfo {
 /** Another feature just for demonstration purposes
  *   */
 type Feature2WireOutputs = {
-  readonly example_output: string;
+  readonly exampleOutput: string;
   readonly _impressionId: string;
 }
 
@@ -140,18 +140,18 @@ export class Feature2 {
     signalExampleEvent( { data } 
         : {  data : string  } ) : void
     {
-      Feature2.signalExampleEvent( this.#_impression.deviceId, this.#_impressionId, { data, } );
+      Feature2.signalExampleEvent( this.#_impression.userId, this.#_impressionId, { data, } );
     }
     /** Example event   
       *  */
-    static signalExampleEvent( deviceId : string, impressionId : string,  { data } 
+    static signalExampleEvent( userId : UserIds, impressionId : string,  { data } 
         : {  data : string  } ) : void
     {
         const _data = { 
+          id : userId,
           feature: "Feature2",
-          event: "example_event",
+          event: "ExampleEvent",
           impressionId: impressionId,
-          deviceId: deviceId,
           args: {  data: data  }
         };
       network.sendBeacon(_data);
@@ -163,9 +163,9 @@ export class Feature2 {
     outputs: Feature2WireOutputs ) {
     this.#_impression = impression;
     this.#_impressionId = outputs._impressionId;
-    this.exampleArg = args.example_arg;
-    if (outputs.example_output != undefined) {
-        this.exampleOutput = outputs.example_output;
+    this.exampleArg = args.exampleArg;
+    if (outputs.exampleOutput != undefined) {
+        this.exampleOutput = outputs.exampleOutput;
     } else {
         this.exampleOutput = "Example output";
     }
@@ -175,6 +175,15 @@ export class Feature2 {
 type SessionArgs = {
    deviceId: string;
 };
+
+function sseUrl( s : SessionArgs ) {
+  let sseUrl = network.baseUrl.replace(
+        /\/?$/,
+        "/sse?id=");
+  if ( s.deviceId != undefined)
+      sseUrl += s.deviceId + "+";
+  return sseUrl;
+}
 
 class ImpressionImpl implements Impression<FeatureNames> {
   readonly #_impressionJson: ImpressionJSON<FeatureNames>;
@@ -186,19 +195,18 @@ class ImpressionImpl implements Impression<FeatureNames> {
     return this.#_impressionJson;
   }
 
-  get deviceId() {
-    return this.#_impressionJson.deviceId;
+  get userId() {
+    return this.#_impressionJson.userId;
   }
 
   constructor(impressionJson: ImpressionJSON<FeatureNames>) {
     this.#_impressionJson = impressionJson;
     const { wireArgs, wireOutputs } = impressionJson;
-    for (const [wireName, args] of Object.entries(wireArgs) as [
+    for (const [featureName, args] of Object.entries(wireArgs) as [
       keyof _WireArgs,
       _WireArgs[keyof _WireArgs]
     ][]) {
-      const output = wireOutputs[wireName];
-      const featureName = wireToFeatureName(wireName);
+      const output = wireOutputs[featureName];
 
       let featureHasData;
       switch (impressionJson.impressionType) {
@@ -210,8 +218,10 @@ class ImpressionImpl implements Impression<FeatureNames> {
           break;
         case "real":
           featureHasData = output != "OFF" && output != undefined;
-          if (output == undefined)
-            log.warn("unexpected undefined or null output for " + featureName);
+          if (output == undefined) {
+            log.log("undefined or null output for " + featureName + ". Using defaults.");
+            featureHasData = defaultFlags[featureName];            
+          }
       }
 
       if (featureHasData) {
@@ -312,7 +322,7 @@ to collect ratings from our users
     getFeature2( { exampleArg } 
       : {  exampleArg : string  } )
         : Query<T | "Feature2"> {
-        this._wireArgs['Feature2'] = { example_arg: exampleArg, }
+        this._wireArgs['Feature2'] = { exampleArg: exampleArg, }
         return this
     }
 
@@ -330,7 +340,7 @@ export type _WireArgs = {
        },
     ProductInfo?:       Record<string, never>,
     Feature2?:  { 
-      example_arg: string
+      exampleArg: string
        },
 };
 
@@ -340,30 +350,11 @@ type FeatureNames =
         |"Feature2"
     ;
 
-type _WireNames = 
-    |"RatingBox"
-        |"ProductInfo"
-        |"Feature2"
-    ;
-
-const wireNames = [
+const featureNames = [
     "RatingBox",
     "ProductInfo",
     "Feature2",
 ] as const;
-
-
-function wireToFeatureName(wireName: _WireNames): FeatureNames {
-  switch (wireName) {
-    case "RatingBox": return "RatingBox";
-        case "ProductInfo": return "ProductInfo";
-        case "Feature2": return "Feature2";
-    ;
-    default:
-      errorNever(wireName, "unexpected wireName");
-      return wireName as FeatureNames
-  }
-}
 
 /**
  * An object of the form `{"FeatureName": FeatureType}` for all features
@@ -385,11 +376,23 @@ export type _WireOutputs = {
     Feature2?:Feature2WireOutputs | "OFF";
 }
 
+type UserIds = {
+    deviceId?: string
+    } & (
+     | { deviceId: string }
+    );
+
+function sessionKeys( s : SessionArgs ) : UserIds {
+  return {
+    deviceId : s.deviceId,
+  };
+}
+
 type Impression<T extends FeatureNames> =
     & ("RatingBox" extends T ? { RatingBox?:RatingBox } : unknown)
     & ("ProductInfo" extends T ? { ProductInfo?:ProductInfo } : unknown)
     & ("Feature2" extends T ? { Feature2?:Feature2 } : unknown)
-    & { deviceId: string }
+    & { userId: UserIds }
     & { toJSON(): ImpressionJSON<T> }
     & {
     }
@@ -419,8 +422,76 @@ export const defaultFlags: Flags<FeatureNames> = {
     Feature2: true,
 };
 
+/**
+ * Register the QA device for the given user. Redirect to
+ * the device page when complete. Display an error message on failure.
+ */
+export function RegisterDevice(props: { causalUserId: string; deviceId : string } ) {
+  const [result, setResult] = useState<string>("Registering...");
+  if (props.causalUserId === undefined) return <div>Cannot register, no userId</div>;
+  if (props.deviceId === undefined)
+    return <div>Cannot register, no deviceId</div>;
+
+  let userAgent = "unknown";
+  if (typeof navigator.userAgent !== "undefined") {
+    userAgent = navigator.userAgent;
+  }
+  async function handleResponse(response: FetchResponse) {
+    if (response.status == 200) {
+      const body = await response.text();
+      window.location.href = body;
+    } else {
+      const body = await response.text();
+      let message = "Failed to register device: code " + response.status;
+      if (response.status == 400 || response.status == 500) {
+        message += " message: " + body;
+      }
+      setResult(message);
+    }
+  }
+  if (result === "Registering...") {
+    network
+      .fetch(network.baseUrl + "register", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: props.causalUserId,
+          id: props.deviceId,
+          userAgent: userAgent,
+          url: window.location.href.split("?")[0],
+        }),
+      })
+      .then(handleResponse);
+  }
+  return <div>{result}</div>;
+}
+
 //#endregion
 ///////////////////////////////////////////////////////////////////////////////
+
+/** very basic uuid generator (to minimize external dependencies) **/
+function uuidv4() {
+  let digits = "";
+  let ii = 0;
+  for (; digits.length < 32 && ii < 100; ii++)
+    digits += (Math.random() * 0xffffffff).toString(16).split(".")[0];
+
+  if (ii == 100) {
+    log.error("failure to generate digits");
+    digits += "00000000000000000000000000000000";
+  }
+
+  return (
+    digits.slice(0, 8) +
+    "-" +
+    digits.slice(8, 12) +
+    "-" +
+    digits.slice(12, 16) +
+    "-" +
+    digits.slice(16, 20) +
+    "-" +
+    digits.slice(20, 32)
+  );
+}
 
 //#region caching
 
@@ -609,11 +680,8 @@ class Cache {
     ) {
       if (!network.newEvtSource) log.error("unexpected undefined newEvtSource");
       else {
-        const sseUrl = network.baseUrl.replace(
-          /\/?$/,
-          "/sse?deviceId=" + sessionArgs.deviceId
-        );
-        this.eventSource = network.newEvtSource(sseUrl);
+        const url = sseUrl(sessionArgs);
+        this.eventSource = network.newEvtSource(url);
         this.eventSource.addEventListener("flush", this.sseFlush.bind(this));
         this.eventSource.addEventListener("hello", this.sseHello.bind(this));
       }
@@ -623,7 +691,7 @@ class Cache {
   deleteAll(invalidateHooks: boolean): void {
     if (this.sessionArgs == undefined) return;
 
-    for (const k of wireNames) this.backingStore.del(k);
+    for (const k of featureNames) this.backingStore.del(k);
     this.backingStore.del("_flags");
     this.backingStore.del("_cacheInfo");
 
@@ -725,7 +793,7 @@ class Cache {
 
     let allCached = true;
     for (const k of Object.keys(wireArgs) as (keyof _WireArgs)[]) {
-      const featureName: FeatureNames = wireToFeatureName(k);
+      const featureName: FeatureNames = k;
 
       const output = this.backingStore.get(k);
       if (output == undefined) {
@@ -763,7 +831,7 @@ class Cache {
     ][]) {
       const wireArg = wireArgs[k];
       if (wireArg != undefined) {
-        const identity = this.getOutputIdentity(wireToFeatureName(k), wireArg);
+        const identity = this.getOutputIdentity(k, wireArg);
         if (identity != undefined && !k.startsWith("_"))
           this.backingStore.set(k, identity, v, nextExpiry);
       }
@@ -1079,7 +1147,7 @@ let _cache: Cache = new Cache(undefined, undefined);
  *
  * It is safe to call `initRequest` multiple times. A good place to call `initRequest` is in a high level/root component like an App component or a always called data fetching function like getServerSideProps.
  *
- * @param sessionArgs The session args for this request. This includes deviceId as well as any other session args that were defined in the FDL file.
+ * @param sessionArgs The session args for this request. 
  * @param incomingMessage If doing SSR, an IncomingMessage (i.e the request object). See: https://nodejs.org/api/http.html#class-httpincomingmessage
  * @param options Configurable options.
  */
@@ -1101,11 +1169,6 @@ export function initRequest(
     return;
   }
 
-  if (!sessionArgs.deviceId) {
-    log.error("Fatal: device id was null");
-    return;
-  }
-
   network.baseUrl = options?.baseUrl
     ? normalizeUrl(options?.baseUrl)
     : defaultNetwork.baseUrl;
@@ -1113,8 +1176,8 @@ export function initRequest(
   const ssr = incomingMessage != undefined;
   if (typeof window == "undefined" && !ssr) {
     log.warn(
-      "Looks like you are rendering server side (SSR), did you forget to pass incomingMessage to initRequest? " + 
-      "This message can also appear during a static build of a CSR page, in which case you can ignore it."
+      "Looks like you are rendering server side (SSR), did you forget to pass incomingMessage to initRequest? " +
+        "This message can also appear during a static build of a CSR page, in which case you can ignore it."
     );
   }
   misc.ssr = ssr;
@@ -1242,27 +1305,6 @@ const fetchFailureStatus = -2;
 export type SelectFeatures<T extends FeatureNames> = T;
 
 /**
- * Convert wire formated flags to typescript naming conventions
- * @param wireFlags
- * @returns
- */
-function wireToFlags(
-  wireFlags: _WireFlags | undefined
-): Flags<FeatureNames> | undefined {
-  if (wireFlags == undefined) return undefined;
-
-  const flags: Flags<FeatureNames> = {} as Flags<FeatureNames>;
-  for (const [wireName, value] of Object.entries(wireFlags) as [
-    keyof _WireFlags,
-    _WireFlags[keyof _WireFlags]
-  ][]) {
-    const flagName = wireToFeatureName(wireName);
-    flags[flagName] = value;
-  }
-  return flags;
-}
-
-/**
  * Create a query to use with [[requestImpression]] or [[useImpression]] using the builder pattern.
  *
  * @return Query to use with [[requestImpression]] or [[useImpression]].
@@ -1283,10 +1325,13 @@ export type ImpressionJSON<T extends FeatureNames> = {
   t?: T; // unused - suppresses T is unused error
 
   /** @internal */
-  impressionType: "real" | "loading" | "error";
+  userId : UserIds;
 
   /** @internal */
-  deviceId: string;
+  impressionType: "real" | "loading" | "error";
+
+  /** @internal If an error, why */
+  reason?: string;
 
   /** @internal */
   wireArgs: _WireArgs;
@@ -1295,36 +1340,28 @@ export type ImpressionJSON<T extends FeatureNames> = {
   wireOutputs: _WireOutputs;
 };
 
-function loadingImpression<T extends FeatureNames>({
-  deviceId,
-}: Pick<ImpressionJSON<T>, "deviceId">): Impression<T> {
+function loadingImpression<T extends FeatureNames>(userId : UserIds): Impression<T> {
   const impression = new ImpressionImpl({
     impressionType: "loading",
-    deviceId,
+    userId,
     wireArgs: {},
     wireOutputs: {} as _WireOutputs,
   });
   return impression as unknown as Impression<T>;
 }
 
-function errorImpression<T extends FeatureNames>({
-  deviceId,
-  wireArgs: args,
-}: Pick<ImpressionJSON<T>, "deviceId" | "wireArgs">): Impression<T> {
+function errorImpression<T extends FeatureNames>(
+  reason: string,
+  { wireArgs }: Pick<ImpressionJSON<T>, "wireArgs">
+): Impression<T> {
   const impression = new ImpressionImpl({
+    userId: {} as UserIds,
     impressionType: "error",
-    deviceId,
-    wireArgs: cleanWireArgs(args),
+    reason,
+    wireArgs: cleanWireArgs(wireArgs),
     wireOutputs: {} as _WireOutputs,
   });
   return impression as unknown as Impression<T>;
-}
-
-function notInitalizedImpression<T extends FeatureNames>(): Impression<T> {
-  return errorImpression({
-    deviceId: "notInitalized",
-    wireArgs: {},
-  });
 }
 
 /**
@@ -1332,13 +1369,13 @@ function notInitalizedImpression<T extends FeatureNames>(): Impression<T> {
  */
 export function toImpression<T extends FeatureNames>({
   impressionType,
-  deviceId,
+  userId,
   wireArgs,
   wireOutputs: outputs,
 }: ImpressionJSON<T>): Impression<T> {
   const impression = new ImpressionImpl({
     impressionType,
-    deviceId,
+    userId,
     wireArgs,
     wireOutputs: outputs as _WireOutputs,
   });
@@ -1514,12 +1551,12 @@ async function iserverFetch({
 
     const impression = new ImpressionImpl({
       impressionType: "real",
-      deviceId: sessionArgs.deviceId,
+      userId: sessionKeys(sessionArgs),
       wireArgs,
       wireOutputs,
     });
 
-    let returnFlags = wireToFlags(responseFlags);
+    let returnFlags = responseFlags;
     if (fetchOptions?.includes("flags") && responseFlags == undefined) {
       log.error("unexpected empty response flags");
       returnFlags = returnFlags ?? defaultFlags;
@@ -1544,7 +1581,7 @@ async function iserverFetch({
 
 function sendImpressionBeacon<T extends FeatureNames>(
   impression: Impression<T>,
-  impressionId?: string
+  impressionId: string
 ) {
   const outputs = impression.toJSON().wireOutputs as _WireOutputs;
   const impressionIdMap: {
@@ -1564,10 +1601,38 @@ function sendImpressionBeacon<T extends FeatureNames>(
 
   if (count > 0) {
     network.sendBeacon({
-      deviceId: impression.deviceId,
+      id: impression.userId,
       impressions: impressionIdMap,
     });
   }
+}
+
+function updateImpressionIds<T extends FeatureNames>(
+  impression: Impression<T>,
+  newImpressionId: string,
+  wireArgs: _WireArgs
+): Impression<T> {
+  const newOutputs: _WireOutputs = {};
+  for (const k of Object.keys(wireArgs) as (keyof _WireArgs)[]) {
+    const currentOutput = impression.toJSON().wireOutputs[k];
+    if (currentOutput == "OFF" || currentOutput == undefined) {
+      // Casting b/c it can be too much for TS to understand
+      (newOutputs as { [idx: string]: unknown })[k] = currentOutput;
+    } else {
+      const newOutput: _WireOutputs[keyof _WireOutputs] = {
+        ...currentOutput,
+        _impressionId: newImpressionId,
+      };
+      // Casting b/c it can be too much for TS to understand
+      (newOutputs as { [idx: string]: unknown })[k] = newOutput;
+    }
+  }
+  return toImpression({
+    impressionType: impression.toJSON().impressionType,
+    userId: impression.userId,
+    wireArgs,
+    wireOutputs: newOutputs,
+  });
 }
 
 function getCachedImpression<T extends FeatureNames>(
@@ -1584,7 +1649,7 @@ function getCachedImpression<T extends FeatureNames>(
     cachedImpression: toImpression({
       impressionType: "real", // we only cache real impressions, not errors or loads
       wireArgs,
-      deviceId: sessionArgs.deviceId,
+      userId: sessionKeys(sessionArgs),
       wireOutputs: cachedOutputs,
     }),
     cachedFlags,
@@ -1603,7 +1668,7 @@ function getCachedImpression<T extends FeatureNames>(
  * @param impressionId The impression id.
  *
  */
-export async function requestImpression<T extends FeatureNames>(
+ export async function requestImpression<T extends FeatureNames>(
   query: Query<T>,
   impressionId?: string
 ): Promise<{
@@ -1614,11 +1679,15 @@ export async function requestImpression<T extends FeatureNames>(
   if (session == undefined) {
     log.error(notInitializedMsg);
     return {
-      impression: notInitalizedImpression(),
+      impression: errorImpression("Not Initialized", {
+        wireArgs: query._wireArgs,
+      }),
       flags: defaultFlags as Flags<T>,
       error: notInitializedError,
     };
   }
+
+  if (impressionId == undefined) impressionId = uuidv4();
 
   const { cachedImpression, cachedFlags } = getCachedImpression<T>(
     session.args,
@@ -1628,7 +1697,11 @@ export async function requestImpression<T extends FeatureNames>(
   if (cachedImpression != undefined && cachedFlags != undefined) {
     sendImpressionBeacon(cachedImpression, impressionId);
     return {
-      impression: cachedImpression,
+      impression: updateImpressionIds(
+        cachedImpression,
+        impressionId,
+        query._wireArgs
+      ),
       flags: cachedFlags as Flags<T>, // cast needed for older version of TS
     };
   }
@@ -1667,10 +1740,7 @@ export async function requestImpression<T extends FeatureNames>(
     };
   } else {
     return {
-      impression: errorImpression({
-        deviceId: session.args.deviceId,
-        wireArgs: query._wireArgs,
-      }),
+      impression: errorImpression("Fetch Failure", { wireArgs: query._wireArgs } ),
       flags: returnFlags as Flags<T>, // cast needed for older version of TS
       error: error ?? {
         message: "unknown error",
@@ -1822,6 +1892,8 @@ type ImpressionFatal<T extends FeatureNames> = {
 };
 type ImpressionCached<T extends FeatureNames> = {
   state: "cached";
+  newImpressionId: string;
+  cachedImpression: Impression<T>;
   impression: Impression<T>;
 };
 type ImpressionLoading<T extends FeatureNames> = {
@@ -1856,9 +1928,7 @@ export function useImpression<T extends FeatureNames>(
 
   // putting into a ref so hook always returns the same loading impression when loading
   const _loadingImpression = useRef<Impression<T>>(
-    loadingImpression({
-      deviceId: _session?.args.deviceId ?? "unexpected-loading-impression-id",
-    })
+      loadingImpression(_session?.args ?? {} as UserIds)
   );
 
   const [, forceUpdate] = useReducer((x) => x + 1, 0);
@@ -1929,8 +1999,7 @@ export function useImpression<T extends FeatureNames>(
       hasChange = true;
       impressionState.current = {
         state: "fatal",
-        impression: errorImpression({
-          deviceId: "nosession",
+        impression: errorImpression("NoSession", {
           wireArgs: query._wireArgs,
         }),
       };
@@ -1959,9 +2028,16 @@ export function useImpression<T extends FeatureNames>(
         impressionState.current.state == "none"
       ) {
         hasChange = true;
+        const newImpressionId = impressionId ?? uuidv4();
         impressionState.current = {
           state: "cached",
-          impression: cachedImpression,
+          newImpressionId,
+          impression: updateImpressionIds(
+            cachedImpression,
+            newImpressionId,
+            query._wireArgs
+          ),
+          cachedImpression,
         };
       }
 
@@ -2023,7 +2099,10 @@ export function useImpression<T extends FeatureNames>(
   useEffect(() => {
     log.debug(1, "useImpression useEffect: cached");
     if (impressionState.current.state == "cached") {
-      sendImpressionBeacon(impressionState.current.impression, impressionId);
+      sendImpressionBeacon(
+        impressionState.current.cachedImpression,
+        impressionState.current.newImpressionId
+      );
       impressionState.current = {
         state: "done",
         impression: impressionState.current.impression,
@@ -2080,50 +2159,4 @@ function addSeconds(date: Date, seconds: number): Date {
   return new Date(date.valueOf() + seconds * 1000);
 }
 
-function errorNever(n: never, message: string) {
-  log.error(message, JSON.stringify(n));
-}
-
-/**
- * Register the deviceId as a QA device for the given user. Redirect to
- * the device page when complete. Display an error message on failure.
- */
-export function RegisterDevice(props: { userId: string; deviceId: string }) {
-  const [result, setResult] = useState<string>("Registering...");
-  if (props.userId === undefined) return <div>Cannot register, no userId</div>;
-  if (props.deviceId === undefined)
-    return <div>Cannot register, no deviceId</div>;
-
-  let userAgent = "unknown";
-  if (typeof navigator.userAgent !== "undefined") {
-    userAgent = navigator.userAgent;
-  }
-  async function handleResponse(response: FetchResponse) {
-    if (response.status == 200) {
-      const body = await response.text();
-      window.location.href = body;
-    } else {
-      const body = await response.text();
-      let message = "Failed to register device: code " + response.status;
-      if (response.status == 400 || response.status == 500) {
-        message += " message: " + body;
-      }
-      setResult(message);
-    }
-  }
-  if (result === "Registering...") {
-    network
-      .fetch(network.baseUrl + "register", {
-        method: "POST",
-        body: JSON.stringify({
-          userId: props.userId,
-          deviceId: props.deviceId,
-          userAgent: userAgent,
-          url: window.location.href.split("?")[0],
-        }),
-      })
-      .then(handleResponse);
-  }
-  return <div>{result}</div>;
-}
 //#endregion
