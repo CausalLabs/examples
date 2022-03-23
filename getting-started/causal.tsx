@@ -899,11 +899,11 @@ let lastLoggedUrl = "";
 function makeBaseUrl(ssr: boolean): string {
   let url = undefined;
   if (ssr) {
-    url = process.env.CAUSAL_SSR_ISERVER;
+    url = process.env.CAUSAL_ISERVER;
     if (url == undefined) {
       log.error(
         "SSR impression server environment variable not set, defaulting to http://localhost:3004/iserver" +
-          "Please set CAUSAL_SSR_ISERVER"
+          "Please set CAUSAL_ISERVER"
       );
       url = "http://localhost:3004/iserver/";
     }

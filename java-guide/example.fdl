@@ -1,0 +1,27 @@
+namespace "io.causallabs.example"
+
+session {
+    args {
+        visitorId : ID! @persistent_key
+        arrivalId : ID! @session_key
+    }
+    plugin java "SessionPlugin" {
+        userZipCode : String! = ""
+    }
+    event Click {
+        clickValue : Int!
+    }
+}
+
+feature Simple
+{
+    args {
+        testInput : Int!
+    }
+    output {
+        testOutput : Int! = 42
+    }
+    event Click {
+        clickValue : Int!
+    }
+}
