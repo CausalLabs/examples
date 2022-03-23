@@ -2,8 +2,8 @@
 .classpath
 .project
 .settings
-getting-started-java/bin
-getting-started-java/build
+bin
+build
 node_modules
 .next
 test.ddl
