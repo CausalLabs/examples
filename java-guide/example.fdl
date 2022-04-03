@@ -1,9 +1,11 @@
+
 namespace "io.causallabs.example"
 
 session {
     args {
         visitorId : ID! @persistent_key
         arrivalId : ID! @session_key
+        userId : ID @mutable
     }
     plugin java "SessionPlugin" {
         userZipCode : String! = ""
@@ -16,10 +18,10 @@ session {
 feature Simple
 {
     args {
-        testInput : Int!
+        simpleInput : Int!
     }
     output {
-        testOutput : Int! = 42
+        simpleOutput : Int! = 42 @external( values: ["BigNumber", "SmallNumber"] )
     }
     event Click {
         clickValue : Int!

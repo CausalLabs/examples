@@ -22,7 +22,7 @@ CAUSAL_SQL=causal.sql
 # IMPORTANT!
 # set OUTPUT_LOCATION to the location where you want athena responses to be placed
 # the bucket below is an example and needs to be changed
-OUTPUT_LOCATION=s3://causal-getting-started/ddlexecution/
+OUTPUT_LOCATION=s3://causal-getting-started-1/ddlexecution/
 
 # IMPORTANT!
 # set DB_NAME to your database name
