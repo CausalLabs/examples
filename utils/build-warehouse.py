@@ -10,8 +10,8 @@
 #        to expose the Glue catalog to Redshift via Redshift Spectrum
 #   ex: python3 build-warehouse.py --output-location "s3://causal-redshift-test-bucket/ddlexecution/" --database causal_redshift_test --create \
 #       --redshift-cluster-identifier redshift-cluster-1 --redshift-role-name ChrisRedshiftSpectrumRole --redshift-database dev \
-#       --redshift-secret-arn "arn:aws:secretsmanager:us-east-2:866349338809:secret:redshift/dbsecret-xVdIik" \
-#       --glue-data-catalog-region=us-east-2 causal.sql
+#       --redshift-secret-arn "arn:aws:secretsmanager:us-east-1:866349338809:secret:redshift/dbsecret-xVdIik" \
+#       --glue-data-catalog-region=us-east-1 causal.sql
 #
 #   You will need the aws-cli to be configured with an appropriate
 #   administrator-level profile to run the commands in this script.
@@ -30,7 +30,7 @@ def get_athena_client():
             "sts",
             aws_access_key_id=os.getenv("EXTAGENT_ACCESS"),
             aws_secret_access_key=os.getenv("EXTAGENT_SECRET"),
-            region_name="us-east-2",
+            region_name="us-east-1",
         )
 
         role = sts_client.assume_role(
@@ -48,7 +48,7 @@ def get_athena_client():
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
             aws_session_token=aws_session_token,
-            region_name="us-east-2",
+            region_name="us-east-1",
         )
     else:
         return boto3.client("athena")

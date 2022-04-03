@@ -5,13 +5,12 @@ plugins {
 
 repositories {
     mavenCentral()
-    // maven { url 'https://s01.oss.sonatype.org/content/repositories/snapshots' }
+    maven { url 'https://maven.causallabs.io' }
 }
 
 dependencies
 {
-    // implementation 'io.causallabs:runtime:0.4.2'
-    implementation project(":runtime")
+    implementation 'io.causallabs:runtime:0.5.3'
 }
 
 // generate the java source for the Causal API
