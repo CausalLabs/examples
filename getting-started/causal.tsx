@@ -439,6 +439,8 @@ export function RegisterDevice(props: { causalUserId: string; deviceId : string 
   async function handleResponse(response: FetchResponse) {
     if (response.status == 200) {
       const body = await response.text();
+      // mark this client as registered, so we can turn on SSE by default
+      window.localStorage.setItem("_causal_registered", "true");
       window.location.href = body;
     } else {
       const body = await response.text();
@@ -876,10 +878,9 @@ class Cache {
     if (this.backingStore.dontStore()) return;
     const mevt: MessageEvent = evt as MessageEvent;
     const cacheVersion = this.backingStore.get("_cacheVersion");
-    if (mevt.data != cacheVersion?.value) {
+    if (cacheVersion != undefined && mevt.data != cacheVersion.value)
       this.deleteAll(true);
-      this.backingStore.set("_cacheVersion", "", mevt.lastEventId, maxDate);
-    }
+    this.backingStore.set("_cacheVersion", "", mevt.lastEventId, maxDate);
   }
 }
 
@@ -978,9 +979,7 @@ export type CausalOptions = {
 
   /**
    * useServerSentEvents: Use server side events to update features
-   * Defaults to true for CSR, unless caching is disabled
-   * setting to false will prevent push updates to feature outputs,
-   * in which case features will only update when the session expires
+   * Defaults to true for registered devices, false otherwise.
    */
   useServerSentEvents?: boolean;
 
@@ -1092,7 +1091,10 @@ let misc = defaultMisc;
 const defaultCacheOptions: CacheOptions = {
   backingStore: defaultSSR ? new NoOpStore() : new LocalStorageStore(),
   outputExpirySeconds: undefined,
-  useServerSentEvents: true,
+  useServerSentEvents: 
+      typeof window != "undefined"
+         ? window.localStorage.getItem("_causal_registered") == "true"
+         : false,
   sessionCacheExpirySeconds: 60 * 30,
 };
 
