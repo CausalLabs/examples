@@ -5,12 +5,13 @@ plugins {
 
 repositories {
     mavenCentral()
+    mavenLocal()
     maven { url 'https://maven.causallabs.io' }
 }
 
 dependencies
 {
-    implementation 'io.causallabs:runtime:0.5.3'
+    implementation 'io.causallabs:runtime:0.8.0'
 }
 
 // generate the java source for the Causal API
