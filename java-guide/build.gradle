@@ -11,7 +11,7 @@ repositories {
 
 dependencies
 {
-    implementation 'io.causallabs:runtime:0.8.0'
+    implementation 'io.causallabs:runtime:0.11.0'
 }
 
 // generate the java source for the Causal API
