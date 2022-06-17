@@ -225,7 +225,7 @@ class ImpressionImpl implements Impression<FeatureNames> {
       }
 
       if (featureHasData) {
-        this[featureName] = new allFeatureTypes[featureName](
+        (this as any)[featureName] = new (allFeatureTypes as any)[featureName]( // eslint-disable-line
           this,
           args as any, // eslint-disable-line
           (output == undefined
@@ -269,6 +269,7 @@ to collect ratings from our users
       { Feature2 : 
           {  exampleArg : string  } } : unknown ) 
 
+      
 
 /**
  * Create a query to use with [[requestImpression]] or [[useImpression]].
@@ -346,9 +347,10 @@ export type _WireArgs = {
 
 type FeatureNames = 
     |"RatingBox"
-        |"ProductInfo"
-        |"Feature2"
-    ;
+    |"ProductInfo"
+    |"Feature2"
+;
+
 
 const featureNames = [
     "RatingBox",
@@ -834,7 +836,7 @@ class Cache {
       const wireArg = wireArgs[k];
       if (wireArg != undefined) {
         const identity = this.getOutputIdentity(k, wireArg);
-        if (identity != undefined && !k.startsWith("_"))
+        if (identity != undefined && !(k as string).startsWith("_"))
           this.backingStore.set(k, identity, v, nextExpiry);
       }
     }
@@ -1091,10 +1093,10 @@ let misc = defaultMisc;
 const defaultCacheOptions: CacheOptions = {
   backingStore: defaultSSR ? new NoOpStore() : new LocalStorageStore(),
   outputExpirySeconds: undefined,
-  useServerSentEvents: 
-      typeof window != "undefined"
-         ? window.localStorage.getItem("_causal_registered") == "true"
-         : false,
+  useServerSentEvents:
+    typeof window != "undefined"
+      ? window.localStorage.getItem("_causal_registered") == "true"
+      : false,
   sessionCacheExpirySeconds: 60 * 30,
 };
 
@@ -1149,7 +1151,7 @@ let _cache: Cache = new Cache(undefined, undefined);
  *
  * It is safe to call `initRequest` multiple times. A good place to call `initRequest` is in a high level/root component like an App component or a always called data fetching function like getServerSideProps.
  *
- * @param sessionArgs The session args for this request. 
+ * @param sessionArgs The session args for this request.
  * @param incomingMessage If doing SSR, an IncomingMessage (i.e the request object). See: https://nodejs.org/api/http.html#class-httpincomingmessage
  * @param options Configurable options.
  */
@@ -1176,8 +1178,14 @@ export function initRequest(
     : defaultNetwork.baseUrl;
 
   const ssr = incomingMessage != undefined;
-  if (typeof window == "undefined" && !ssr) {
-    log.warn(
+  if (
+    typeof window == "undefined" &&
+    !ssr &&
+    // stifle this message in development because the dev version compiles the page on
+    // every render which prints this message each time
+    process.env.NODE_ENV != "development"
+   ) {
+      log.warn(
       "Looks like you are rendering server side (SSR), did you forget to pass incomingMessage to initRequest? " +
         "This message can also appear during a static build of a CSR page, in which case you can ignore it."
     );
@@ -1327,7 +1335,7 @@ export type ImpressionJSON<T extends FeatureNames> = {
   t?: T; // unused - suppresses T is unused error
 
   /** @internal */
-  userId : UserIds;
+  userId: UserIds;
 
   /** @internal */
   impressionType: "real" | "loading" | "error";
@@ -1342,7 +1350,9 @@ export type ImpressionJSON<T extends FeatureNames> = {
   wireOutputs: _WireOutputs;
 };
 
-function loadingImpression<T extends FeatureNames>(userId : UserIds): Impression<T> {
+function loadingImpression<T extends FeatureNames>(
+  userId: UserIds
+): Impression<T> {
   const impression = new ImpressionImpl({
     impressionType: "loading",
     userId,
@@ -1595,7 +1605,7 @@ function sendImpressionBeacon<T extends FeatureNames>(
     if (v != "OFF" && v != undefined) {
       count += 1;
       impressionIdMap[k] = {
-        impression: v?._impressionId as string, // older versions of TS need this cast
+        impression: (v as { _impressionId: string })?._impressionId, // older versions of TS need this cast
         newImpression: impressionId,
       };
     }
@@ -1621,8 +1631,8 @@ function updateImpressionIds<T extends FeatureNames>(
       // Casting b/c it can be too much for TS to understand
       (newOutputs as { [idx: string]: unknown })[k] = currentOutput;
     } else {
-      const newOutput: _WireOutputs[keyof _WireOutputs] = {
-        ...currentOutput,
+      const newOutput: { _impressionId: string } = {
+        ...(currentOutput as any), // eslint-disable-line
         _impressionId: newImpressionId,
       };
       // Casting b/c it can be too much for TS to understand
@@ -1670,7 +1680,7 @@ function getCachedImpression<T extends FeatureNames>(
  * @param impressionId The impression id.
  *
  */
- export async function requestImpression<T extends FeatureNames>(
+export async function requestImpression<T extends FeatureNames>(
   query: Query<T>,
   impressionId?: string
 ): Promise<{
@@ -1742,7 +1752,9 @@ function getCachedImpression<T extends FeatureNames>(
     };
   } else {
     return {
-      impression: errorImpression("Fetch Failure", { wireArgs: query._wireArgs } ),
+      impression: errorImpression("Fetch Failure", {
+        wireArgs: query._wireArgs,
+      }),
       flags: returnFlags as Flags<T>, // cast needed for older version of TS
       error: error ?? {
         message: "unknown error",
@@ -1930,7 +1942,7 @@ export function useImpression<T extends FeatureNames>(
 
   // putting into a ref so hook always returns the same loading impression when loading
   const _loadingImpression = useRef<Impression<T>>(
-      loadingImpression(_session?.args ?? {} as UserIds)
+    loadingImpression(_session?.args ?? ({} as UserIds))
   );
 
   const [, forceUpdate] = useReducer((x) => x + 1, 0);

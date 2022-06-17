@@ -49,7 +49,7 @@ function ProductInfo({
             onSetRating={(newRating) => {
               setRating(newRating);
               // wire up events
-              impression.RatingBox?.signalRating({ stars: rating });
+              impression.RatingBox?.signalRating({ stars: newRating });
             }}
           />
           <a href={"react-example?pid=" + product.next}>Rate Another</a>
