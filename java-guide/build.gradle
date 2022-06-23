@@ -11,13 +11,12 @@ repositories {
 
 dependencies
 {
-    implementation 'io.causallabs:runtime:0.11.0'
+    implementation 'io.causallabs:runtime:0.13.0'
 }
 
 // generate the java source for the Causal API
 task generateFdlSource(type: Exec) {
-    //commandLine 'causalc', '--java', 'build/generated/fdl', 'example.fdl'
-    commandLine '../../../compiler/build/install/compiler/bin/compiler', '--java', 'build/generated/fdl', 'example.fdl'
+    commandLine 'causalc', '--java', 'build/generated/fdl', 'example.fdl'
 }
 compileJava.dependsOn(generateFdlSource)
 
