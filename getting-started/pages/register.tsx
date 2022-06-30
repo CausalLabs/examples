@@ -1,6 +1,5 @@
 import { useRouter } from "next/router";
 import React from "react";
-import { RegisterDevice } from "../causal";
 import ClientOnly, { getOrGenDeviceId } from "../utils";
 
 export default function Page() {
@@ -19,13 +18,14 @@ export function RegistrationPage() {
     return <div>No user id in query string</div>;
   }
 
+  // this makes sure that when someone updates something in the tools UI,
+  // the client side caching is flushed.
+  // not strictly necessary if you are only using server side APIs
+  window.localStorage.setItem("_causal_registered", "true");
+
+  // the "deviceId" is our persistent key
   const deviceId = getOrGenDeviceId(router);
-  return (
-    <div>
-      <RegisterDevice
-        causalUserId={query.userId as string}
-        deviceId={deviceId}
-      ></RegisterDevice>
-    </div>
-  );
+  router.push(`https://tools.causallabs.io/QA?persistentId=${deviceId}`);
+
+  return <></>;
 }
