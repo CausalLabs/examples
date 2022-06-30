@@ -13,11 +13,6 @@ export default function Page() {
 export function RegistrationPage() {
   const router = useRouter();
 
-  const query = router.query;
-  if (!query.userId) {
-    return <div>No user id in query string</div>;
-  }
-
   // this makes sure that when someone updates something in the tools UI,
   // the client side caching is flushed.
   // not strictly necessary if you are only using server side APIs
