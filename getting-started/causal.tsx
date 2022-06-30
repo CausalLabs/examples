@@ -424,51 +424,6 @@ export const defaultFlags: Flags<FeatureNames> = {
     Feature2: true,
 };
 
-/**
- * Register the QA device for the given user. Redirect to
- * the device page when complete. Display an error message on failure.
- */
-export function RegisterDevice(props: { causalUserId: string; deviceId : string } ) {
-  const [result, setResult] = useState<string>("Registering...");
-  if (props.causalUserId === undefined) return <div>Cannot register, no userId</div>;
-  if (props.deviceId === undefined)
-    return <div>Cannot register, no deviceId</div>;
-
-  let userAgent = "unknown";
-  if (typeof navigator.userAgent !== "undefined") {
-    userAgent = navigator.userAgent;
-  }
-  async function handleResponse(response: FetchResponse) {
-    if (response.status == 200) {
-      const body = await response.text();
-      // mark this client as registered, so we can turn on SSE by default
-      window.localStorage.setItem("_causal_registered", "true");
-      window.location.href = body;
-    } else {
-      const body = await response.text();
-      let message = "Failed to register device: code " + response.status;
-      if (response.status == 400 || response.status == 500) {
-        message += " message: " + body;
-      }
-      setResult(message);
-    }
-  }
-  if (result === "Registering...") {
-    network
-      .fetch(network.baseUrl + "register", {
-        method: "POST",
-        body: JSON.stringify({
-          userId: props.causalUserId,
-          id: props.deviceId,
-          userAgent: userAgent,
-          url: window.location.href.split("?")[0],
-        }),
-      })
-      .then(handleResponse);
-  }
-  return <div>{result}</div>;
-}
-
 //#endregion
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -687,6 +642,8 @@ class Cache {
         const url = sseUrl(sessionArgs);
         this.eventSource = network.newEvtSource(url);
         this.eventSource.addEventListener("flush", this.sseFlush.bind(this));
+        this.eventSource.addEventListener("flushcache", this.sseFlushCache.bind(this));
+        this.eventSource.addEventListener("flushfeatures", this.sseFlushFeatures.bind(this));
         this.eventSource.addEventListener("hello", this.sseHello.bind(this));
       }
     }
@@ -865,6 +822,8 @@ class Cache {
     }
   }
 
+  // handle the "flush" sse, which is now deprecated.
+  // data is either '_all', or a list of features to flush
   sseFlush(evt: Event) {
     if (this.backingStore.dontStore()) return;
 
@@ -874,6 +833,27 @@ class Cache {
     // hooks already invalidated
     else this.sseMaybeDel(mevt.data, null);
     this.backingStore.set("_cacheVersion", "", mevt.lastEventId, maxDate);
+  }
+
+  // handle the "flushcache" sse.
+  // flush the entire cache. The cache version is send in the data.
+  sseFlushCache(evt: Event) {
+    if (this.backingStore.dontStore()) return;
+
+    const mevt: MessageEvent = evt as MessageEvent;
+    _flushCount++;
+    this.deleteAll(false);
+    this.backingStore.set("_cacheVersion", "", mevt.data, maxDate);
+  }
+
+  // handle the "flushfeatures" sse.
+  // flush the cache for the feature names listed in the data.
+  sseFlushFeatures(evt: Event) {
+    if (this.backingStore.dontStore()) return;
+
+    const mevt: MessageEvent = evt as MessageEvent;
+    _flushCount++;
+    this.sseMaybeDel(mevt.data, null);
   }
 
   sseHello(evt: Event) {
