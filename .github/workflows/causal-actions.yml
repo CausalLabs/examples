@@ -19,5 +19,5 @@ jobs:
           https://raw.githubusercontent.com/GITHUB_OWNER/GITHUB_REPO/${{ github.sha }}/getting-started/causal.fdl -O /tmp/causal.fdl
       ## push the FDL file to Causal
       - run: |
-          wget --content-on-error -O- --post-file /tmp/causal.fdl \
-          'https://dev.causallabs.io/fdlpush?token=${{ secrets.CAUSAL_TOKEN }}&env=ENV_ID'
+          wget --content-on-error -O- --header='Content-Type:text/plain' --post-file /tmp/causal.fdl \
+          'https://tools.causallabs.io/fdlpush?token=${{ secrets.CAUSAL_TOKEN }}&env=ENV_ID'
