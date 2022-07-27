@@ -832,7 +832,7 @@ class Cache {
     if (mevt.data == "_all") this.deleteAll(false);
     // hooks already invalidated
     else this.sseMaybeDel(mevt.data, null);
-    this.backingStore.set("_cacheVersion", "", mevt.lastEventId, maxDate);
+    this.backingStore.set("_cacheVersion", "", "0", maxDate);
   }
 
   // handle the "flushcache" sse.
@@ -862,7 +862,7 @@ class Cache {
     const cacheVersion = this.backingStore.get("_cacheVersion");
     if (cacheVersion != undefined && mevt.data != cacheVersion.value)
       this.deleteAll(true);
-    this.backingStore.set("_cacheVersion", "", mevt.lastEventId, maxDate);
+    this.backingStore.set("_cacheVersion", "", mevt.data, maxDate);
   }
 }
 
