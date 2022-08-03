@@ -19,7 +19,7 @@
     "uuid": "^8.3.2"
   },
   "devDependencies": {
-    "@causal/compiler": "^0.16.0",
+    "@causal/compiler": "^0.17.0",
     "@types/cookies": "^0.7.7",
     "@types/react": "17.0.24",
     "@types/react-cookies": "^0.1.0",
