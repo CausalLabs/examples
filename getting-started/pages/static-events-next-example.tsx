@@ -1,11 +1,6 @@
 import { GetServerSideProps } from "next";
 import { useState } from "react";
-import {
-  initRequest,
-  queryBuilder,
-  RatingBox,
-  requestImpression,
-} from "../causal";
+import { queryBuilder, RatingBox, requestImpression, Session } from "../causal";
 import { RatingWidget } from "../components/RatingWidget";
 import { getOrGenDeviceId } from "../utils";
 
@@ -21,13 +16,14 @@ export const getServerSideProps: GetServerSideProps<SSRProps> = async (
   context
 ) => {
   const deviceId = getOrGenDeviceId(context);
-  initRequest({ deviceId }, context.req);
+  const sessionArgs = { deviceId };
   const product = products[context.query.pid as keyof typeof products];
   const impressionId = "imp-1234";
 
   const query = queryBuilder().getRatingBox({ product: product.name });
   const { impression, flags, error } = await requestImpression(
     query,
+    new Session(sessionArgs, context.req),
     impressionId
   );
 
