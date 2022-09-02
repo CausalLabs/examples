@@ -1,13 +1,13 @@
 import { useRouter } from "next/router";
 import { useState } from "react";
-import { initRequest, queryBuilder, useFlags, useImpression } from "../causal";
+import { queryBuilder, Session, useFlags, useImpression } from "../causal";
 import { RatingWidget } from "../components/RatingWidget";
 import { getOrGenDeviceId } from "../utils";
 
 export default function Page() {
   const router = useRouter();
-  initRequest({ deviceId: getOrGenDeviceId(router) });
-  const { flags } = useFlags();
+  const sessionArgs = { deviceId: getOrGenDeviceId(router) };
+  const { flags } = useFlags(new Session(sessionArgs));
   const product = products[router.query.pid as keyof typeof products];
 
   if (!flags?.ProductInfo) {
@@ -28,7 +28,12 @@ function ProductInfo({
 }) {
   const [rating, setRating] = useState(0);
   const query = queryBuilder().getRatingBox({ product: product.name });
-  const { impression, flags, error } = useImpression(query);
+  const router = useRouter();
+  const sessionArgs = { deviceId: getOrGenDeviceId(router) };
+  const { impression, flags, error } = useImpression(
+    query,
+    new Session(sessionArgs)
+  );
 
   // check for errors
   if (error) {

@@ -7,8 +7,12 @@ class Test {
     final String impressionId = "impressionId";
 
     public void main() throws Exception {
-        SessionRequest s = new SessionRequest("testVisitorId", "testArrivalId", null);
-        SimpleRequest req = new SimpleRequest(123);
+        SessionRequest s = SessionRequest.builder()
+                .visitorId("testVisitorId")
+                .arrivalId("testArrivalId")
+                .userId(null)
+                .build();
+        SimpleRequest req = SimpleRequest.builder().simpleInput(123).build();
         CausalClient.getInstance().request(s, "impressionId", req);
         if (!req.isSimpleOutputSet()) {
             switch (req.getSimpleOutputExternal()) {
@@ -23,7 +27,8 @@ class Test {
         req.getSimpleOutput();
         req.signalClick(10);
         s.setUserId("loginId");
-        s = new SessionRequest("testVisitorId", "testArrivalId", "loginId");
+        s = SessionRequest.builder().visitorId("testVisitorId").arrivalId("testArrivalId")
+                .userId("loginId").build();
     }
 
     public void remoteClickExample() {

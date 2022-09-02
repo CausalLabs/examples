@@ -3,9 +3,9 @@ import { useState } from "react";
 import {
   createQuery,
   ImpressionJSON,
-  initRequest,
   requestImpression,
   SelectFeatures,
+  Session,
   toImpression,
 } from "../causal";
 import { RatingWidget } from "../components/RatingWidget";
@@ -21,7 +21,6 @@ type SSRProps = {
 export const getServerSideProps: GetServerSideProps<SSRProps> = async (
   context
 ) => {
-  initRequest({ deviceId: getOrGenDeviceId(context) }, context.req);
   const product = products[context.query.pid as keyof typeof products];
   if (product == undefined) {
     return {
@@ -33,7 +32,13 @@ export const getServerSideProps: GetServerSideProps<SSRProps> = async (
     RatingBox: { product: product.name },
   });
 
-  const { impression, error } = await requestImpression(query);
+  const sessionArgs = { deviceId: getOrGenDeviceId(context) };
+  const impressionId = "imp-1234";
+  const { impression, error } = await requestImpression(
+    query,
+    new Session(sessionArgs, context.req),
+    impressionId
+  );
 
   if (error) {
     console.log(
