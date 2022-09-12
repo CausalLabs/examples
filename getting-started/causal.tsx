@@ -1,21 +1,19 @@
 // This is a FeatureDL automatically generated file. DO NOT DIRECTLY EDIT, your changes will not persist.
 import fetch from "cross-fetch";
-import { useEffect, useReducer, useRef } from "react";
+import React, { useEffect, useReducer, useRef, useContext } from "react";
 
 ///////////////////////////////////////////////////////////////////////////////
 //#region  parameterized
 
 
-/** Wraps a rating box that we can put on various product pages
-to collect ratings from our users
+/** Wraps a rating box that we can put on various product pages to collect ratings from our users
  *   */
 type RatingBoxWireOutputs = {
   readonly callToAction: string;
   readonly _impressionId: string;
 }
 
-/** Wraps a rating box that we can put on various product pages
-to collect ratings from our users
+/** Wraps a rating box that we can put on various product pages to collect ratings from our users
  *   */
 export class RatingBox {
     /** The product that we are collecting ratings for
@@ -66,11 +64,10 @@ export class RatingBox {
     this.#_impression = impression;
     this.#_impressionId = outputs._impressionId;
     this.product = args.product;
-    if (outputs.callToAction != undefined) {
+    if (outputs.callToAction !== undefined) {
         this.callToAction = outputs.callToAction;
     } else {
-        this.callToAction = "Rate this product!";
-    }
+        this.callToAction = "Rate this product!";    }
   }
 }
 /** An empty feature to use only as a kill switch
@@ -160,26 +157,16 @@ export class Feature2 {
     this.#_impression = impression;
     this.#_impressionId = outputs._impressionId;
     this.exampleArg = args.exampleArg;
-    if (outputs.exampleOutput != undefined) {
+    if (outputs.exampleOutput !== undefined) {
         this.exampleOutput = outputs.exampleOutput;
     } else {
-        this.exampleOutput = "Example output";
-    }
+        this.exampleOutput = "Example output";    }
   }
 }
 
-type ImplicitArgs = {
-  userAgent?: string;
-  ipAddress?: string;
-  entryUrl?: string;
-  clientType?: string;
-};
-
-type SessionArgsExplicit = {
+export type SessionArgs = {
    deviceId: string;
 };
-
-export type SessionArgs = SessionArgsExplicit & ImplicitArgs;
 
 function sseUrl( s : Partial<SessionArgs> ) {
   let sseUrl = network.getBaseUrl().replace(
@@ -191,21 +178,21 @@ function sseUrl( s : Partial<SessionArgs> ) {
 }
 
 class ImpressionImpl implements Impression<FeatureNames> {
-  readonly #_impressionJson: ImpressionJSON<FeatureNames>;
+  readonly _json: ImpressionJSON<FeatureNames>;
 
   // Note: There is no impression id declared at this level
   // The features have impression ids as part of their outputs
 
   toJSON() {
-    return this.#_impressionJson;
+    return this._json;
   }
 
   get userId() {
-    return this.#_impressionJson.userId;
+    return this._json.userId;
   }
 
   constructor(impressionJson: ImpressionJSON<FeatureNames>) {
-    this.#_impressionJson = impressionJson;
+    this._json = impressionJson;
     const { wireArgs, wireOutputs } = impressionJson;
     for (const [featureName, args] of Object.entries(wireArgs) as [
       keyof _WireArgs,
@@ -222,7 +209,7 @@ class ImpressionImpl implements Impression<FeatureNames> {
           featureHasData = false;
           break;
         case "real":
-          featureHasData = output != "OFF" && output != undefined;
+          featureHasData = output != "OFF" && output !== undefined;
           if (output == undefined) {
             log.warn("undefined or null output for " + featureName + ". Using defaults.");
             featureHasData = defaultFlags[featureName];            
@@ -257,8 +244,7 @@ class ImpressionImpl implements Impression<FeatureNames> {
  * @paramtype The feature to query for
  */
 export type QueryArgs<T extends FeatureNames> = 
-    /** Wraps a rating box that we can put on various product pages
-to collect ratings from our users
+    /** Wraps a rating box that we can put on various product pages to collect ratings from our users
      *   */
     & ("RatingBox" extends T ?   
       { RatingBox : 
@@ -307,8 +293,7 @@ export function createQuery<T extends FeatureNames>(
 *
 */
 export class Query<T extends FeatureNames>{
-    /** Wraps a rating box that we can put on various product pages
-to collect ratings from our users
+    /** Wraps a rating box that we can put on various product pages to collect ratings from our users
      *   */
     getRatingBox( { product } 
       : {  product : string  } )
@@ -348,20 +333,17 @@ export type _WireArgs = {
     Feature2?:  { 
       exampleArg: string
        },
+
 };
-
-type FeatureNames = 
-    |"RatingBox"
-    |"ProductInfo"
-    |"Feature2"
-;
-
 
 const featureNames = [
     "RatingBox",
     "ProductInfo",
     "Feature2",
 ] as const;
+
+type FeatureNames = typeof featureNames[number];
+
 
 /**
  * An object of the form `{"FeatureName": FeatureType}` for all features
@@ -378,7 +360,7 @@ export const allFeatureTypes = {
  * Do not use - only exported for testing
  */
 export type _WireOutputs = {
-    session?: SessionArgsExplicit;
+    session?: SessionArgs;
     RatingBox?:RatingBoxWireOutputs | "OFF";
     ProductInfo?:ProductInfoWireOutputs | "OFF";
     Feature2?:Feature2WireOutputs | "OFF";
@@ -389,7 +371,7 @@ type UserIds = {
     deviceId?: string
     };
 
-function sessionKeys( s : Partial<SessionArgsExplicit> ) : UserIds {
+function sessionKeys( s : Partial<SessionArgs> ) : UserIds {
   return {
     deviceId : s?.deviceId,
   };
@@ -410,6 +392,7 @@ type Impression<T extends FeatureNames> =
     & ("Feature2" extends T ? { Feature2?:Feature2 } : unknown)
     & { userId: UserIds }
     & { toJSON(): ImpressionJSON<T> }
+    & { _json: ImpressionJSON<T> }
     & {
     }
 
@@ -421,6 +404,7 @@ export type _WireFlags = {
     RatingBox: boolean;
     ProductInfo: boolean;
     Feature2: boolean;
+
 };
 
 type Flags<T extends FeatureNames> = 
@@ -439,16 +423,115 @@ export const defaultFlags: Flags<FeatureNames> = {
 };
 
 export class Session {
-  sessionArgs: Partial<SessionArgs>;
 
-  constructor(args: SessionArgs, incomingMessage?: IncomingMessage) {
-    this.sessionArgs = args;
-    if (incomingMessage) this.addIncomingMessageArgs(incomingMessage);
+  static fromDeviceId( deviceId: string, req?: IncomingMessage): Session {
+      const sessionArgs: Partial<SessionArgs> = { deviceId:deviceId };
+      return new Session(sessionArgs as SessionArgs, req);
+  }
+
+
+//#endregion
+///////////////////////////////////////////////////////////////////////////////
+
+_args: Partial<SessionArgs>;
+  _implicitArgs: ImplicitArgs = {};
+  _cache: _Cache;
+
+  _ssrCacheType: SessionJSON["ssr"]["cacheType"];
+  _csrCacheType: SessionJSON["csr"]["cacheType"];
+
+  constructor(
+    args: SessionArgs,
+    req?: IncomingMessage,
+    options?: {
+      ssrCacheType?: SessionJSON["ssr"]["cacheType"];
+      csrCacheType?: SessionJSON["csr"]["cacheType"];
+    }
+  ) {
+    this._args = args;
+    if (req) this.addIncomingMessageArgs(req);
+
+    const { ssrCacheType, csrCacheType } = options ?? {};
+
+    this._ssrCacheType = ssrCacheType ?? cacheOptions.ssrCacheType;
+    this._csrCacheType = csrCacheType ?? cacheOptions.csrCacheType;
+
+    const cacheType = misc.ssr ? this._ssrCacheType : this._csrCacheType;
+    const backingStore = Session.makeBackingStore(cacheType);
+
+    this._cache = new _Cache(args, backingStore, cacheOptions);
+
+    this._cache.testAndTouchSession();
+  }
+
+  static makeBackingStore(
+    cacheType: SessionJSON["ssr"]["cacheType"] | SessionJSON["csr"]["cacheType"]
+  ): BackingStore {
+    switch (cacheType) {
+      case "none":
+        return new NoOpStore();
+      case "inMemory":
+        return new InMemoryStore();
+      case "localStorage":
+        return new LocalStorageStore();
+      default:
+        log.error("unknown cache type");
+        const _: never = cacheType;
+        _;
+        return new NoOpStore();
+    }
+  }
+
+  toJSON(): SessionJSON {
+    return {
+      sessionArgs: this._args,
+      ssr: {
+        cacheType: this._ssrCacheType,
+        cacheJson: misc.ssr ? this._cache.backingStore.getJSON() : undefined,
+      },
+      csr: {
+        cacheType: this._csrCacheType,
+        cacheJson: misc.ssr ? undefined : this._cache.backingStore.getJSON(),
+      },
+    };
+  }
+
+  static fromJSON(json: SessionJSON): Session {
+    // if we are using local storage (i.e. share backing cache) and the session args are different,
+    // creating the session here will (correctly) clear all the entries
+    const session = new Session(json.sessionArgs as SessionArgs, undefined, {
+      ssrCacheType: json.ssr.cacheType,
+      csrCacheType: json.csr.cacheType,
+    });
+
+    if (json.ssr.cacheJson && misc.ssr) {
+      // ssr to ssr
+      session._cache.backingStore.setJSON(json.ssr.cacheJson);
+    } else if (json.ssr.cacheJson && !misc.ssr) {
+      // ssr to csr
+      const ssrStore = Session.makeBackingStore(json.ssr.cacheType);
+      ssrStore.setJSON(json.ssr.cacheJson);
+
+      session._cache.backingStore.delAll({ provenance: "ssr" });
+
+      _Cache.transferTo(ssrStore, session._cache.backingStore);
+
+      session._cache.backingStore.setProvenance(_cacheInfo, "csr");
+      session._cache.backingStore.setProvenance("session", "csr");
+    } else if (json.csr && !misc.ssr) {
+      // csr to csr
+      session._cache.backingStore.setJSON(json.csr.cacheJson);
+    } else {
+      // csr to ssr ?
+      log.warn("trying to transfer csr cache to ssr, ignoring");
+    }
+
+    return session;
   }
 
   addIncomingMessageArgs(incomingMessage: IncomingMessage) {
-    this.sessionArgs = {
-      ...this.sessionArgs,
+    this._implicitArgs = {
+      ...this._args,
       userAgent: incomingMessage?.headers["user-agent"] as string,
       clientType: "typescript",
       ipAddress: incomingMessage?.socket.remoteAddress,
@@ -456,14 +539,418 @@ export class Session {
     };
   }
 
-  static fromDeviceId( deviceId: string, incomingMessage?: IncomingMessage): Session {
-      const sessionArgs: Partial<SessionArgs> = { deviceId:deviceId };
-      return new Session(sessionArgs as SessionArgs, incomingMessage);
+  /**
+   * Async function to get the impression and on/off flags associated with a feature.
+   *
+   * @returns A promise that will resolve with the impression and the current set of feature flags.
+   * On an error, it will return the default values for the impression and flags, as well as an additional informational error value.
+   * Please note - The return value is strongly typed. A TypeDoc documentation generation bug shows it as an Object here. It returns the same values as [[useImpression]].
+   *
+   * @typeparam Type information for the request and returned impression. Typically inferred from the query.
+   * @param query Features to request and their arguments.
+   * @param sessionArgs The session args as defined in the FDL
+   * @param impressionId The impression id.
+   *
+   */
+  async requestImpression<T extends FeatureNames>(
+    query: Query<T>,
+    impressionId?: string
+  ): Promise<{
+    impression: Impression<T>;
+    flags: Flags<T>;
+    error?: CausalError;
+  }> {
+    if (impressionId == undefined) impressionId = uuidv4();
+
+    const cache = this._cache;
+
+    const { cachedImpression, cachedFlags, metadata } = getCachedImpression<T>(
+      this,
+      query._wireArgs
+    );
+
+    if (
+      cachedImpression != undefined &&
+      cachedFlags != undefined &&
+      metadata != undefined
+    ) {
+      let allSSR = true;
+      for (const v of metadata.values()) {
+        if (v.provenance == "csr") {
+          allSSR = false;
+          break;
+        }
+      }
+
+      // if the cached impression is not entirely from SSR, delay one tick
+      if (!allSSR) await new Promise((r) => setTimeout(r, 0));
+
+      sendImpressionBeacon(cachedImpression, impressionId, metadata);
+      const impression = updateImpressionIds(
+        cachedImpression,
+        impressionId,
+        query._wireArgs,
+        metadata
+      );
+      this._cache.updateProvenance(impression);
+      return {
+        impression,
+        flags: cachedFlags as Flags<T>, // cast needed for older version of TS
+      };
+    }
+
+    const fetchOptions: FetchOptions[] = [];
+
+    const { flags, impression, error } = await iserverFetch({
+      options: fetchOptions,
+      impressionId,
+      sessionArgs: this._args,
+      implicitArgs: this._implicitArgs,
+      wireArgs: query._wireArgs,
+    });
+
+    // not needed for the impression stuff, but might as well cache them since we got them
+    if (flags) cache.setFlags(flags);
+
+    if (impression) {
+      cache.setOutputs(query._wireArgs, impression.toJSON().wireOutputs);
+      return {
+        impression: impression as unknown as Impression<T>,
+        flags: flagsFromImpression(impression) as Flags<T>, // cast needed for older version of TS
+        error,
+      };
+    } else {
+      const errImpression = errorImpression(this, "Fetch Failure", {
+        wireArgs: query._wireArgs,
+      }) as Impression<T>;
+
+      return {
+        impression: errImpression,
+        flags: flagsFromImpression(errImpression),
+        error: error ?? {
+          errorType: "unknown",
+          message: "unknown error",
+        },
+      };
+    }
+  }
+
+  /**
+   * @deprecated
+   * Async function to get the on/off flags associated with a feature.
+   *
+   * @returns A promise that will resolve with the current set of feature flags.
+   * On an error, it will return the default flags and an additional informational error value.
+   *
+   * Please note - The return value is strongly typed. A TypDoc documentation generation bug shows it as an Object here. It returns the same values as [[useFlags]].
+   */
+  async requestFlags(session: Session): Promise<{
+    flags: Flags<FeatureNames>;
+    error?: CausalError;
+  }> {
+    const args = session._args;
+
+    const cache = session._cache;
+    const cachedFlags = cache.flags();
+    if (cachedFlags != undefined) return { flags: cachedFlags };
+
+    const { flags: responseFlags, error } = await iserverFetch({
+      sessionArgs: args,
+      implicitArgs: session._implicitArgs,
+      options: ["flags"],
+    });
+
+    if (!error) {
+      if (responseFlags == undefined)
+        log.warn("no error requesting flags, but no responseFlags");
+      else {
+        cache.setFlags(responseFlags);
+      }
+    }
+
+    // cache.flags() is very likely to be undefined, but on the off
+    // chance a different request completed, including here
+    return { flags: responseFlags ?? cache.flags() ?? defaultFlags, error };
+  }
+
+  clearImpressionStats() {
+    this._cache.clearCacheStats();
+  }
+
+  getImpressionStats(): {
+    cacheMisses: string[];
+    cacheHits: string[];
+    cacheNoOps: string[];
+  } {
+    const cacheStats = this._cache.cacheStats;
+    const cacheHits = [...cacheStats.hits.keys()];
+    const cacheMisses = [...cacheStats.misses.keys()];
+
+    // perhaps this logic should live in the Cache class
+    const keys = this._cache.backingStore.keys();
+    const cacheNoOps = keys.filter(
+      (k) =>
+        !k.startsWith("_") &&
+        k != "session" &&
+        cacheStats.hits.get(k) == undefined &&
+        cacheStats.misses.get(k) == undefined
+    );
+
+    return {
+      cacheHits,
+      cacheMisses,
+      cacheNoOps,
+    };
   }
 }
 
-//#endregion
-///////////////////////////////////////////////////////////////////////////////
+type ImplicitArgs = {
+  userAgent?: string;
+  ipAddress?: string;
+  entryUrl?: string;
+  clientType?: string;
+};
+
+function sessionArgsMatch(
+  args1: Partial<SessionArgs> | undefined,
+  args2: Partial<SessionArgs> | undefined
+): boolean {
+  return JSON.stringify(args1) == JSON.stringify(args2);
+}
+
+function flagsFromImpression(impression?: undefined): undefined;
+
+function flagsFromImpression<T extends FeatureNames>(
+  impression: Impression<T>
+): Flags<T>;
+
+function flagsFromImpression<T extends FeatureNames>(
+  impression?: Impression<T>
+): Flags<T> | undefined {
+  if (impression == undefined) return undefined;
+
+  const wireArgs = impression._json.wireArgs;
+  const wireOutputs = impression._json.wireOutputs;
+  const flags: Partial<Flags<FeatureNames>> = {};
+  for (const k of Object.keys(wireArgs)) {
+    const v = wireOutputs[k as FeatureNames];
+    const key = k as FeatureNames;
+    if (v === undefined) flags[key] = defaultFlags[key];
+    else flags[key] = v != "OFF";
+  }
+
+  return flags as Flags<T>;
+}
+
+function getCachedImpression(
+  session: Session,
+  wireArgs: _WireArgs
+): {
+  cachedImpression?: undefined;
+  cachedFlags?: undefined;
+  metadata?: undefined;
+};
+
+function getCachedImpression<T extends FeatureNames>(
+  session: Session,
+  wireArgs: _WireArgs
+): {
+  cachedImpression: Impression<T>;
+  cachedFlags: Flags<T>;
+  metadata: OutputMetadata;
+};
+
+function getCachedImpression<T extends FeatureNames>(
+  session: Session,
+  wireArgs: _WireArgs
+): {
+  cachedImpression?: Impression<T>;
+  cachedFlags?: Flags<T>;
+  metadata?: OutputMetadata;
+} {
+  const cache = session._cache;
+
+  const outputs = cache.outputs(wireArgs);
+  if (outputs == undefined) return {};
+  const { wireOutputs: cachedOutputs, metadata } = outputs;
+
+  const cachedImpression: Impression<T> = toImpression({
+    impressionType: "real", // only cache real impressions, not errors or loads
+    wireArgs,
+    userId: sessionKeys(session._args),
+    wireOutputs: cachedOutputs,
+  });
+
+  const cachedFlags = flagsFromImpression(cachedImpression);
+
+  return {
+    cachedImpression,
+    cachedFlags,
+    metadata,
+  };
+}
+
+function loadingImpression<T extends FeatureNames>(
+  session: Session
+): Impression<T> {
+  const impression = new ImpressionImpl({
+    impressionType: "loading",
+    userId: sessionKeys(session._args),
+    wireArgs: {},
+    wireOutputs: {} as _WireOutputs,
+  });
+  return impression as unknown as Impression<T>;
+}
+
+function errorImpression<T extends FeatureNames>(
+  session: Session | undefined,
+  reason: string,
+  { wireArgs }: Pick<ImpressionJSON<T>, "wireArgs">
+): Impression<T> {
+  const impression = new ImpressionImpl({
+    userId: session ? sessionKeys(session._args) : ({} as UserIds),
+    impressionType: "error",
+    reason,
+    wireArgs: cleanWireArgs(wireArgs),
+    wireOutputs: {} as _WireOutputs,
+  });
+  return impression as unknown as Impression<T>;
+}
+
+export type SessionJSON = {
+  sessionArgs: Partial<SessionArgs>;
+  ssr: {
+    cacheType: "none" | "inMemory";
+    cacheJson: unknown | undefined;
+  };
+  csr: {
+    cacheType: "none" | "localStorage" | "inMemory";
+    cacheJson: unknown | undefined;
+  };
+};
+
+export class InMemoryStore implements BackingStore {
+  // store as strings and not raw values to mimic local storage
+  // this also prevents any truth equality based on references
+  map = new Map<string, string>();
+
+  get(key: string):
+    | undefined
+    | {
+        identity: string;
+        value: unknown;
+        created: Date;
+        expires: Date;
+        provenance: "ssr" | "csr";
+      } {
+    const raw = this.map.get(key);
+    if (raw == undefined) return undefined;
+    const { identity, value, created, expires, provenance }: StoreItem =
+      JSON.parse(raw);
+    const now = new Date();
+    const createdTS = new Date(created);
+    const expiresTS = new Date(expires);
+
+    if (expiresTS < now) {
+      this.map.delete(key);
+      return undefined;
+    }
+    return {
+      identity,
+      value,
+      created: createdTS,
+      expires: expiresTS,
+      provenance,
+    };
+  }
+
+  set({
+    key,
+    identity,
+    value,
+    expires,
+    created,
+    provenance,
+  }: {
+    key: string;
+    identity: string;
+    value: unknown;
+    expires: Date;
+    created?: Date;
+    provenance?: "ssr" | "csr";
+  }) {
+    const createdString = (created ?? new Date()).toISOString();
+    const expiresString = expires.toISOString();
+    provenance = provenance ?? (misc.ssr ? "ssr" : "csr");
+    const toStore: StoreItem = {
+      created: createdString,
+      expires: expiresString,
+      identity,
+      value,
+      provenance,
+    };
+    return this.map.set(key, JSON.stringify(toStore));
+  }
+
+  getProvenance(key: string): "ssr" | "csr" | undefined {
+    const item = this.get(key);
+    if (item == undefined) return undefined;
+    return item.provenance;
+  }
+
+  setProvenance(key: string, provenance: "ssr" | "csr") {
+    const item = this.get(key);
+    if (item == undefined) {
+    } else {
+      item.provenance = provenance;
+      this.set({ key, ...item });
+    }
+  }
+
+  del(key: string) {
+    return this.map.delete(key);
+  }
+
+  delAll({ provenance }: { provenance: "ssr" | "csr" | "all" }): void {
+    switch (provenance) {
+      case "all":
+        this.map = new Map<string, string>();
+        break;
+      case "ssr":
+      case "csr":
+        for (const k of this.keys()) {
+          const item = this.get(k);
+          if (item?.provenance == provenance) this.del(k);
+        }
+    }
+  }
+
+  isEmpty(): boolean {
+    return this.map.size == 0;
+  }
+
+  keys(): string[] {
+    return [...this.map.keys()];
+  }
+
+  getJSON(): unknown {
+    return [...this.map.entries()].reduce(
+      (obj: Record<string, unknown>, [key, val]) => {
+        obj[key] = val;
+        return obj;
+      },
+      {}
+    );
+  }
+
+  setJSON(json: unknown): void {
+    this.map = new Map(Object.entries(json as Record<string, string>));
+  }
+
+  dontStore() {
+    return false;
+  }
+}
 
 /** very basic uuid generator (to minimize external dependencies) **/
 function uuidv4() {
@@ -498,11 +985,39 @@ let _flushCount = 0;
  * Do not use - only exported for testing
  */
 export type BackingStore = {
-  get(
-    key: string
-  ): undefined | { identity: string; value: unknown; created: Date };
-  set(key: string, identity: string, value: unknown, expiresTS: Date): void;
+  get(key: string):
+    | undefined
+    | {
+        identity: string;
+        value: unknown;
+        created: Date;
+        expires: Date;
+        provenance: "ssr" | "csr";
+      };
+  set({
+    key,
+    identity,
+    value,
+    expires,
+    created,
+    provenance,
+  }: {
+    key: string;
+    identity: string;
+    value: unknown;
+    expires: Date;
+    created?: Date;
+    provenance?: "ssr" | "csr";
+  }): void;
+
+  getProvenance(key: string): undefined | "ssr" | "csr";
+  setProvenance(key: string, provenance: "ssr" | "csr"): void;
   del(key: string): void;
+  delAll(options: { provenance: "ssr" | "csr" | "all" }): void;
+  isEmpty(): boolean;
+  keys(): string[];
+  getJSON(): unknown;
+  setJSON(json: unknown): void;
   dontStore(): boolean;
 };
 
@@ -514,22 +1029,35 @@ export type StoreItem = {
   created: string;
   expires: string;
   identity: string;
+  provenance: "ssr" | "csr";
   value: unknown;
 };
 
 class LocalStorageStore implements BackingStore {
+  static prefix = "_causal_";
+
   static makeKey(key: string): string {
-    return "_causal_" + key;
+    return LocalStorageStore.prefix + key;
   }
 
   get(
-    key: string
-  ): undefined | { identity: string; value: unknown; created: Date } {
-    const _key = LocalStorageStore.makeKey(key);
+    key: string,
+    autoPrefix = true
+  ):
+    | undefined
+    | {
+        identity: string;
+        value: unknown;
+        created: Date;
+        expires: Date;
+        provenance: "csr" | "ssr";
+      } {
+    const _key = autoPrefix ? LocalStorageStore.makeKey(key) : key;
     const raw = window.localStorage.getItem(_key);
     if (!raw) return undefined;
     try {
-      const { identity, value, created, expires }: StoreItem = JSON.parse(raw);
+      const { identity, value, created, expires, provenance }: StoreItem =
+        JSON.parse(raw);
 
       const now = new Date();
       const createdTS = new Date(created);
@@ -540,7 +1068,13 @@ class LocalStorageStore implements BackingStore {
         return undefined;
       }
 
-      return { identity, value, created: createdTS };
+      return {
+        identity,
+        value,
+        created: createdTS,
+        expires: expiresTS,
+        provenance,
+      };
     } catch (e) {
       log.warn(
         "failed to deserialize from cache. Error = " + JSON.stringify(e)
@@ -550,17 +1084,47 @@ class LocalStorageStore implements BackingStore {
     }
   }
 
-  set(key: string, identity: string, value: string, expiresTS: Date) {
+  set({
+    key,
+    identity,
+    value,
+    expires,
+    created,
+    provenance,
+  }: {
+    key: string;
+    identity: string;
+    value: unknown;
+    expires: Date;
+    created?: Date;
+    provenance?: "ssr" | "csr";
+  }) {
     const _key = LocalStorageStore.makeKey(key);
-    const createdString = new Date().toISOString();
-    const expiresString = expiresTS.toISOString();
+    const createdString = (created ?? new Date()).toISOString();
+    const expiresString = expires.toISOString();
     const toStore: StoreItem = {
       created: createdString,
       expires: expiresString,
       identity,
       value,
+      provenance: provenance ?? (misc.ssr ? "ssr" : "csr"),
     };
     return window.localStorage.setItem(_key, JSON.stringify(toStore));
+  }
+
+  getProvenance(key: string): "ssr" | "csr" | undefined {
+    const item = this.get(key);
+    if (item == undefined) return undefined;
+    return item.provenance;
+  }
+
+  setProvenance(key: string, provenance: "ssr" | "csr") {
+    const item = this.get(key);
+    if (item == undefined) {
+    } else {
+      item.provenance = provenance;
+      this.set({ key, ...item });
+    }
   }
 
   del(key: string) {
@@ -568,10 +1132,54 @@ class LocalStorageStore implements BackingStore {
     window.localStorage.removeItem(_key);
   }
 
+  delAll({ provenance }: { provenance: "all" | "ssr" | "csr" }): void {
+    for (let ii = localStorage.length - 1; ii >= 0; --ii) {
+      const key = localStorage.key(ii);
+      if (
+        key?.startsWith(LocalStorageStore.prefix) &&
+        key != _causal_registered
+      ) {
+        const item = this.get(key, false);
+        if (provenance == "all" || item?.provenance == provenance)
+          localStorage.removeItem(key);
+      }
+    }
+  }
+
+  isEmpty(): boolean {
+    for (let ii = 0; ii < localStorage.length; ii++) {
+      const key = localStorage.key(ii);
+      if (key?.startsWith(LocalStorageStore.prefix)) return false;
+    }
+    return true;
+  }
+
+  keys(): string[] {
+    const _keys: string[] = [];
+    const prefixLen = LocalStorageStore.prefix.length;
+
+    for (let ii = 0; ii < localStorage.length; ii++) {
+      const key = localStorage.key(ii);
+      if (key?.startsWith(LocalStorageStore.prefix))
+        _keys.push(key.substring(prefixLen));
+    }
+
+    return _keys;
+  }
+
+  getJSON(): unknown {
+    return undefined;
+  }
+
+  setJSON(): void {
+    undefined;
+  }
+
   dontStore() {
     return false;
   }
 }
+
 class NoOpStore implements BackingStore {
   get(): undefined {
     return undefined;
@@ -580,7 +1188,35 @@ class NoOpStore implements BackingStore {
     undefined;
   }
 
+  getProvenance(): "ssr" | "csr" | undefined {
+    return undefined;
+  }
+
+  setProvenance() {
+    undefined;
+  }
+
   del() {
+    undefined;
+  }
+
+  delAll(): void {
+    undefined;
+  }
+
+  isEmpty(): boolean {
+    return true;
+  }
+
+  keys(): string[] {
+    return [];
+  }
+
+  getJSON(): unknown {
+    return undefined;
+  }
+
+  setJSON(): void {
     undefined;
   }
 
@@ -591,19 +1227,12 @@ class NoOpStore implements BackingStore {
 
 type CacheOptions = {
   /**
-   * The cache to use to cache feature values.
-   * The default is to use LocalStorage on the client and not cache on the server
-   * Set to null to explicitly disable caching
-   */
-  backingStore: BackingStore | null;
-
-  /**
    * The maximum amount of time to cache feature values.
    * The default is to cache for the same duration as a session
    * Setting to zero will disable caching
    * Setting to a negative number will be ignored
    */
-  outputExpirySeconds: number | undefined;
+  outputExpirySeconds?: number;
 
   /**
    * The duration of inactivity before the entire cache is flushed
@@ -611,7 +1240,7 @@ type CacheOptions = {
    * This is typically set in your environment and compiled into this file
    * It is not recommended you set it here
    */
-  sessionCacheExpirySeconds: number;
+  sessionCacheExpirySeconds?: number;
 
   /** useServerSentEvents: Use server side events to update features
    *  defaults to true for CSR, unless caching is disabled
@@ -619,29 +1248,60 @@ type CacheOptions = {
    *  setting to false will prevent push updates to feature outputs,
    *  in which case features will only update when the cache expires
    */
-  useServerSentEvents: boolean;
+  useServerSentEvents?: boolean;
+
+  /**
+   * The default ssr cache type to use if none is specified.
+   * This defaults to "inMemory"
+   */
+  ssrCacheType?: SessionJSON["ssr"]["cacheType"];
+
+  /**
+   * The default csr cache type to use if none is specified.
+   * This defaults to "localStorage"
+   */
+  csrCacheType?: SessionJSON["csr"]["cacheType"];
 };
 
-class Cache {
+type OutputMetadata = Map<string, { provenance: "ssr" | "csr" }>;
+
+const _cacheInfo = "_cacheInfo";
+const _causal_registered = "_causal_registered";
+
+type CacheInfo = {
+  sessionStart: string;
+  lastAccess: string;
+  sessionArgs: Partial<SessionArgs> | undefined;
+};
+
+/**
+ * @internal
+ * Do not use - only exported for testing
+ */
+export class _Cache {
   sessionArgs: Partial<SessionArgs> | undefined;
   backingStore: BackingStore;
   outputExpirySeconds: number | undefined;
   useServerSentEvents: boolean;
   sessionCacheExpirySeconds: number;
   eventSource: EventSource | undefined;
+  cacheStats: {
+    hits: Map<string, number>;
+    misses: Map<string, number>;
+  } = { hits: new Map(), misses: new Map() };
 
   constructor(
     sessionArgs: Partial<SessionArgs> | undefined,
-    options: CacheOptions
+    backingStore: BackingStore,
+    options: Required<CacheOptions>
   ) {
     const {
-      backingStore,
       outputExpirySeconds,
       useServerSentEvents,
       sessionCacheExpirySeconds,
     } = options;
 
-    this.backingStore = backingStore ?? new NoOpStore(); // can't be null here, but making the type system happy
+    this.backingStore = backingStore;
     this.outputExpirySeconds = outputExpirySeconds;
     this.useServerSentEvents = useServerSentEvents;
     this.sessionCacheExpirySeconds = sessionCacheExpirySeconds;
@@ -658,9 +1318,7 @@ class Cache {
       this.useServerSentEvents
     ) {
       if (!network.newEvtSource) {
-        throw new Error(
-          "fatal: can not register server sent events"
-        );
+        throw new Error("fatal: can not register server sent events");
       } else {
         const url = sseUrl(sessionArgs);
         this.eventSource = network.newEvtSource(url);
@@ -681,11 +1339,7 @@ class Cache {
   deleteAll(invalidateHooks: boolean): void {
     if (this.sessionArgs == undefined) return;
 
-    // TODO: only delete keys that are actually cached
-    for (const k of featureNames) this.backingStore.del(k);
-    this.backingStore.del("_flags");
-    this.backingStore.del("_cacheInfo");
-    this.backingStore.del("session");
+    this.backingStore.delAll({ provenance: "all" });
 
     // forces react hooks to re-execute next time they are used
     if (invalidateHooks) _flushCount += 1;
@@ -698,40 +1352,55 @@ class Cache {
     log.debug(5, "testAndTouchSession");
     if (this.backingStore.dontStore()) return false;
 
-    const rawInfo = this.backingStore.get("_cacheInfo")?.value as
-      | {
-          sessionStart: string;
-          lastAccess: string;
-        }
+    const oldCacheInfo = this.backingStore.get(_cacheInfo)?.value as
+      | CacheInfo
       | undefined;
 
     const now = new Date();
-    let sessionStart = now;
-    let lastAccess = now;
-    if (rawInfo) {
-      sessionStart = new Date(rawInfo.sessionStart);
-      lastAccess = new Date(rawInfo.lastAccess);
+    let cacheExpired = false;
+
+    if (oldCacheInfo) {
+      const expires = addSeconds(
+        new Date(oldCacheInfo.lastAccess),
+        this.sessionCacheExpirySeconds
+      );
+
+      const invalid = isNaN(expires.valueOf());
+      if (expires < now || invalid) {
+        log.debug(1, "session expired");
+        cacheExpired = true;
+
+        // should never happen, but be extra cautious to avoid render loop
+        const invalidateHooks = !invalid;
+        this.deleteAll(invalidateHooks);
+      }
     }
 
-    const cacheInfo = { sessionStart, lastAccess };
-
-    const expires = addSeconds(
-      cacheInfo.lastAccess,
-      this.sessionCacheExpirySeconds
-    );
-    const invalid = isNaN(expires.valueOf());
-    if (expires < now || invalid) {
-      log.debug(1, "session expired");
-      cacheInfo.sessionStart = now;
-      cacheInfo.lastAccess = now;
-
-      // should never happen, but be extra cautious to avoid render loop
-      const invalidateHooks = !invalid;
-      this.deleteAll(invalidateHooks);
+    const curSessionArgs = this.sessionArgs;
+    if (
+      !this.backingStore.isEmpty() &&
+      oldCacheInfo?.sessionArgs &&
+      !sessionArgsMatch(oldCacheInfo.sessionArgs, curSessionArgs)
+    ) {
+      log.debug(1, "session args changes, deleting values");
+      this.deleteAll(true);
     }
 
-    cacheInfo.lastAccess = now;
-    this.backingStore.set("_cacheInfo", "", cacheInfo, maxDate);
+    const newCacheInfo: CacheInfo = {
+      sessionStart:
+        cacheExpired || !oldCacheInfo
+          ? now.toISOString()
+          : oldCacheInfo.sessionStart,
+      lastAccess: now.toISOString(),
+      sessionArgs: this.sessionArgs,
+    };
+
+    this.backingStore.set({
+      key: _cacheInfo,
+      identity: "",
+      value: newCacheInfo,
+      expires: maxDate,
+    });
     return true;
   }
 
@@ -741,7 +1410,7 @@ class Cache {
   }
 
   getOutputIdentity(
-    featureName: FeatureNames,
+    featureName: FeatureNames | "session",
     wireArg: _WireArgs[keyof _WireArgs]
   ): string | undefined {
     if (featureName == undefined) {
@@ -772,24 +1441,52 @@ class Cache {
 
   setFlags(flags: Flags<FeatureNames>) {
     if (!this.testAndTouchSession()) return;
-    this.backingStore.set("_flags", "", flags, maxDate); // flags expire with session
+    this.backingStore.set({
+      key: "_flags",
+      identity: "",
+      value: flags,
+      expires: maxDate,
+    }); // flags expire with session
   }
 
-  outputs(wireArgs: _WireArgs): _WireOutputs | undefined {
+  addCacheHit(...featureNames: string[]) {
+    for (const featureName of featureNames) {
+      const count = this.cacheStats.hits.get(featureName) ?? 0;
+      this.cacheStats.hits.set(featureName, count + 1);
+    }
+  }
+
+  addCacheMiss(...featureNames: string[]) {
+    for (const featureName of featureNames) {
+      const count = this.cacheStats.misses.get(featureName) ?? 0;
+      this.cacheStats.misses.set(featureName, count + 1);
+    }
+  }
+
+  clearCacheStats() {
+    this.cacheStats = { hits: new Map(), misses: new Map() };
+  }
+
+  outputs(wireArgs: _WireArgs):
+    | {
+        wireOutputs: _WireOutputs;
+        metadata: OutputMetadata;
+      }
+    | undefined {
     if (!this.testAndTouchSession()) return undefined;
 
-    const flags = this.flags();
     const outputs: _WireOutputs = {};
-
-    if (flags == undefined) return undefined;
+    const metadata: OutputMetadata = new Map();
 
     let allCached = true;
 
     const sessionOutput = this.backingStore.get("session");
     if (sessionOutput == undefined) {
       allCached = false;
+      this.addCacheMiss("session");
+      this.addCacheMiss(...Object.keys(wireArgs));
     } else {
-      outputs["session"] = sessionOutput.value as SessionArgsExplicit;
+      outputs["session"] = sessionOutput.value as SessionArgs;
 
       for (const k of Object.keys(wireArgs) as (keyof _WireArgs)[]) {
         const featureName: FeatureNames = k;
@@ -797,26 +1494,32 @@ class Cache {
         const output = this.backingStore.get(k);
         if (output == undefined) {
           allCached = false;
+          this.addCacheMiss(k);
           break;
         }
 
         const identity = this.getOutputIdentity(featureName, wireArgs[k]);
         if (identity !== output.identity) {
           allCached = false;
+          this.addCacheMiss(k);
           break;
         }
 
         try {
           // eslint-disable-next-line
           (outputs as any)[k] = output.value;
+          metadata.set(k, { provenance: output.provenance });
+
+          this.addCacheHit(k);
         } catch {
+          log.warn("unexpected exception retrieving from cache");
           allCached = false;
           break;
         }
       }
     }
     if (allCached) {
-      return outputs;
+      return { wireOutputs: outputs, metadata };
     }
     return undefined;
   }
@@ -830,13 +1533,24 @@ class Cache {
       _WireOutputs[keyof _WireOutputs]
     ][]) {
       if (k == "session") {
-        this.backingStore.set(k, k, v, nextExpiry);
+        const sessionIdentity = JSON.stringify(this.sessionArgs);
+        this.backingStore.set({
+          key: k,
+          identity: sessionIdentity,
+          value: v,
+          expires: nextExpiry,
+        });
       } else {
         const wireArg = wireArgs[k];
         if (wireArg != undefined) {
           const identity = this.getOutputIdentity(k, wireArg);
           if (identity != undefined && !(k as string).startsWith("_"))
-            this.backingStore.set(k, identity, v, nextExpiry);
+            this.backingStore.set({
+              key: k,
+              identity,
+              value: v,
+              expires: nextExpiry,
+            });
         }
       }
     }
@@ -875,7 +1589,12 @@ class Cache {
     if (mevt.data == "_all") this.deleteAll(false);
     // hooks already invalidated
     else this.sseMaybeDel(mevt.data, null);
-    this.backingStore.set("_cacheVersion", "", "0", maxDate);
+    this.backingStore.set({
+      key: "_cacheVersion",
+      identity: "",
+      value: "0",
+      expires: maxDate,
+    });
   }
 
   // handle the "flushcache" sse.
@@ -886,7 +1605,12 @@ class Cache {
     const mevt: MessageEvent = evt as MessageEvent;
     _flushCount++;
     this.deleteAll(false);
-    this.backingStore.set("_cacheVersion", "", mevt.data, maxDate);
+    this.backingStore.set({
+      key: "_cacheVersion",
+      identity: "",
+      value: mevt.data,
+      expires: maxDate,
+    });
   }
 
   // handle the "flushfeatures" sse.
@@ -905,7 +1629,43 @@ class Cache {
     const cacheVersion = this.backingStore.get("_cacheVersion");
     if (cacheVersion != undefined && mevt.data != cacheVersion.value)
       this.deleteAll(true);
-    this.backingStore.set("_cacheVersion", "", mevt.data, maxDate);
+    this.backingStore.set({
+      key: "_cacheVersion",
+      identity: "",
+      value: mevt.data,
+      expires: maxDate,
+    });
+  }
+
+  /** updates impression cache outputs to CSR */
+  updateProvenance<T extends FeatureNames>(impression: Impression<T>) {
+    // never set to csr server side
+    if (misc.ssr) return;
+
+    const outputs = impression._json.wireOutputs;
+
+    Object.keys(outputs).forEach((k) => {
+      if (k != "session" && this.backingStore.getProvenance(k) == "ssr") {
+        this.backingStore.setProvenance(k, "csr");
+      }
+    });
+  }
+
+  static transferTo(fromStore: BackingStore, toStore: BackingStore) {
+    for (const k of fromStore.keys()) {
+      const result = fromStore.get(k);
+      if (result) {
+        const { created, expires, identity, value, provenance } = result;
+        toStore.set({
+          key: k,
+          identity: identity,
+          value,
+          expires,
+          created,
+          provenance,
+        });
+      }
+    }
   }
 }
 
@@ -928,7 +1688,7 @@ function makeBaseUrl(ssr: boolean): string {
     url = process.env.CAUSAL_ISERVER;
     if (url == undefined) {
       log.warn(
-        "SSR impression server environment variable not set, defaulting to http://localhost:3004/iserver" +
+        "SSR impression server environment variable not set, defaulting to 'http://localhost:3004/iserver'. " +
           "Please set CAUSAL_ISERVER"
       );
       url = "http://localhost:3004/iserver/";
@@ -964,19 +1724,19 @@ function makeBaseUrl(ssr: boolean): string {
  * @internal
  * Do not use - only exported for testing
  */
-type LogFn = (message: string, ...optionalParams: unknown[]) => void;
+type _LogFn = (message: string, ...optionalParams: unknown[]) => void;
 
 /**
  * @internal
  * Do not use - only exported for testing
  */
-export type FetchUrl = string;
+export type _FetchUrl = string;
 
 /**
  * @internal
  * Do not use - only exported for testing
  */
-export type FetchRequestInit = {
+export type _FetchRequestInit = {
   method?: "GET" | "POST";
   body?: string;
   signal?: AbortSignal;
@@ -1032,33 +1792,25 @@ export type CausalOptions = {
  */
 export type CausalDebugOptions = {
   /**
-   * Reset the cache?
-   * Defaults to false
-   * If true, will delete all backing store entries,
-   *  create a new cache, and redo event source
-   */
-  resetCache?: boolean;
-
-  /**
    * By default Causal use console.log to log info
    * You can alter this behavior be providing a logging function.
    */
-  logInfo?: LogFn;
+  logInfo?: _LogFn;
 
   /**
    * By default Causal use console.warn to log warnings.
    * You can alter this behavior be providing a logging function.
    */
-  logWarn?: LogFn;
+  logWarn?: _LogFn;
 
   /**
    * By default Causal use console.error to log errors.
    * You can alter this behavior be providing a logging function.
    */
-  logError?: LogFn;
+  logError?: _LogFn;
 
   /**
-   * By default, when running in the browser, Causal uses Navigor.sendBeacons to send non synchronous data.
+   * By default, when running in the browser, Causal uses Navigator.sendBeacons to send non synchronous data.
    * By default, when running in node, Causal uses fetch.
    * You can alter this behavior by setting this function
    */
@@ -1068,7 +1820,7 @@ export type CausalDebugOptions = {
    * By default, Causal uses cross-fetch to fetch
    * You can alter this behavior by setting this function
    */
-  fetch?: (url: string, init?: FetchRequestInit) => Promise<FetchResponse>;
+  fetch?: (url: string, init?: _FetchRequestInit) => Promise<FetchResponse>;
 
   /**
    * By default, Causal uses new EventSource to create an EvtSource
@@ -1076,18 +1828,25 @@ export type CausalDebugOptions = {
    */
   newEvtSource?: (url: string) => EventSource;
 
-  cacheOptions?: Partial<Omit<CacheOptions, "useServerSentEvents">>;
-
+  /**
+   * Is this an SSR render
+   * By default this is true if typeof window == "undefined", otherwise false
+   */
   ssr?: boolean;
+
+  /**
+   * Global cacheing options
+   */
+  cacheOptions?: CacheOptions;
 };
 
 // eslint-disable-next-line
 let debugLogLevel = -1;
 
 const defaultLog: {
-  info: LogFn;
-  warn: LogFn;
-  error: LogFn;
+  info: _LogFn;
+  warn: _LogFn;
+  error: _LogFn;
   debug: (level: number, message: string, ...optionalParams: unknown[]) => void;
 } = {
   info: (...args) => {
@@ -1122,14 +1881,15 @@ const defaultMisc = {
 };
 const misc = { ...defaultMisc };
 
-const defaultCacheOptions: CacheOptions = {
-  backingStore: defaultSSR ? new NoOpStore() : new LocalStorageStore(),
-  outputExpirySeconds: undefined,
+const defaultCacheOptions: Required<CacheOptions> = {
+  outputExpirySeconds: 60 * 60 * 24 * 365 * 100, // 100 years (so will expire with the session)
   useServerSentEvents:
     typeof window != "undefined"
-      ? window.localStorage.getItem("_causal_registered") == "true"
+      ? window.localStorage.getItem(_causal_registered) == "true"
       : false,
   sessionCacheExpirySeconds: 60 * 30,
+  ssrCacheType: "inMemory",
+  csrCacheType: "localStorage",
 };
 let cacheOptions = { ...defaultCacheOptions };
 
@@ -1152,7 +1912,7 @@ const defaultNetwork = {
       );
     }
   },
-  fetch: (url: FetchUrl, init?: FetchRequestInit): Promise<FetchResponse> => {
+  fetch: (url: _FetchUrl, init?: _FetchRequestInit): Promise<FetchResponse> => {
     log.debug(2, "defaultFetch");
     return fetch(url, init);
   },
@@ -1167,35 +1927,6 @@ const defaultNetwork = {
   },
 };
 let network = { ...defaultNetwork };
-
-let _cache: Cache | undefined = undefined;
-
-function argsAreSame(
-  args1: Partial<SessionArgs> | undefined,
-  args2: Partial<SessionArgs> | undefined
-) {
-  return JSON.stringify(args1) == JSON.stringify(args2);
-}
-
-/**
- * @internal
- * Do not use - only exported for testing
- */
-export function _getCache(sessionArgs: Partial<SessionArgs>) {
-  if (_cache == undefined || !argsAreSame(sessionArgs, _cache.sessionArgs)) {
-    if (_cache != undefined) _cache.deleteAll(true);
-    _cache = new Cache(sessionArgs, cacheOptions);
-  }
-  return _cache;
-}
-
-/**
- * @internal
- * Do not use - only exported for testing
- */
-export function _getCacheRaw() {
-  return _cache;
-}
 
 // eslint-disable-next-line
 
@@ -1236,7 +1967,10 @@ export function initCausal(
       );
     },
 
-    fetch: (url: FetchUrl, init?: FetchRequestInit): Promise<FetchResponse> => {
+    fetch: (
+      url: _FetchUrl,
+      init?: _FetchRequestInit
+    ): Promise<FetchResponse> => {
       const baseFetch = debugOptions?.fetch ?? defaultNetwork.fetch;
 
       if (typeof AbortController == "undefined") {
@@ -1259,32 +1993,22 @@ export function initCausal(
     newEvtSource: debugOptions?.newEvtSource ?? defaultNetwork.newEvtSource,
   };
 
-  if (debugOptions?.resetCache) {
-    _getCacheRaw()?.deleteAll(true);
-    if (
-      debugOptions?.cacheOptions?.backingStore &&
-      debugOptions.cacheOptions?.outputExpirySeconds === 0
-    ) {
-      log.warn("backing store set, but outputExpirySeconds is 0. Not caching");
-    }
-
-    const debugCO = debugOptions?.cacheOptions;
-    cacheOptions = {
-      backingStore:
-        debugCO?.backingStore ??
-        (misc.ssr || debugCO?.backingStore === null
-          ? new NoOpStore()
-          : defaultCacheOptions.backingStore),
-      outputExpirySeconds:
-        debugCO?.outputExpirySeconds ?? defaultCacheOptions.outputExpirySeconds,
-      sessionCacheExpirySeconds:
-        debugCO?.sessionCacheExpirySeconds ??
-        defaultCacheOptions.sessionCacheExpirySeconds,
-      useServerSentEvents:
-        options?.useServerSentEvents ?? defaultCacheOptions.useServerSentEvents,
-    };
-    _cache = undefined;
-  }
+  const debugCO = debugOptions?.cacheOptions;
+  cacheOptions = {
+    outputExpirySeconds:
+      debugCO?.outputExpirySeconds ?? defaultCacheOptions.outputExpirySeconds,
+    sessionCacheExpirySeconds:
+      debugCO?.sessionCacheExpirySeconds ??
+      defaultCacheOptions.sessionCacheExpirySeconds,
+    useServerSentEvents:
+      options?.useServerSentEvents ?? defaultCacheOptions.useServerSentEvents,
+    ssrCacheType:
+      debugOptions?.cacheOptions?.ssrCacheType ??
+      defaultCacheOptions.ssrCacheType,
+    csrCacheType:
+      debugOptions?.cacheOptions?.csrCacheType ??
+      defaultCacheOptions.csrCacheType,
+  };
 }
 
 type IncomingMessage = {
@@ -1315,6 +2039,8 @@ export function queryBuilder(): Query<never> {
   return new Query();
 }
 
+export const qb = queryBuilder;
+
 /**
  * JSON format for an impression.
  * This can be safely serialized to JSON with functions like `JSON.stringify()`.
@@ -1341,32 +2067,6 @@ export type ImpressionJSON<T extends FeatureNames> = {
   /** @internal */
   wireOutputs: _WireOutputs;
 };
-
-function loadingImpression<T extends FeatureNames>(
-  userId: UserIds
-): Impression<T> {
-  const impression = new ImpressionImpl({
-    impressionType: "loading",
-    userId,
-    wireArgs: {},
-    wireOutputs: {} as _WireOutputs,
-  });
-  return impression as unknown as Impression<T>;
-}
-
-function errorImpression<T extends FeatureNames>(
-  reason: string,
-  { wireArgs }: Pick<ImpressionJSON<T>, "wireArgs">
-): Impression<T> {
-  const impression = new ImpressionImpl({
-    userId: {} as UserIds,
-    impressionType: "error",
-    reason,
-    wireArgs: cleanWireArgs(wireArgs),
-    wireOutputs: {} as _WireOutputs,
-  });
-  return impression as unknown as Impression<T>;
-}
 
 /**
  * Convert a [[ImpressionJSON]] back to an impression.
@@ -1398,42 +2098,6 @@ export type IServerResponse = _WireOutputs & {
 // Currently only one kind of fetch option now, do we want to get the complete set of flags
 type FetchOptions = "flags";
 
-/**
- * Async function to get the on/off flags associated with a feature.
- *
- * @returns A promise that will resolve with the current set of feature flags.
- * On an error, it will return the default flags and an additional informational error value.
- *
- * Please note - The return value is strongly typed. A TypDoc documentation generation bug shows it as an Object here. It returns the same values as [[useFlags]].
- */
-export async function requestFlags(session: Session): Promise<{
-  flags: Flags<FeatureNames>;
-  error?: CausalError;
-}> {
-  const args = session.sessionArgs;
-
-  const cache = _getCache(args);
-  const cachedFlags = cache.flags();
-  if (cachedFlags != undefined) return { flags: cachedFlags };
-
-  const { flags: responseFlags, error } = await iserverFetch({
-    sessionArgs: args,
-    options: ["flags"],
-  });
-
-  if (!error) {
-    if (responseFlags == undefined)
-      log.warn("no error requesting flags, but no responseFlags");
-    else {
-      cache.setFlags(responseFlags);
-    }
-  }
-
-  // cache.flags() is very likely to be undefined, but on the off
-  // chance a different request completed, including here
-  return { flags: responseFlags ?? cache.flags() ?? defaultFlags, error };
-}
-
 function cleanWireArgs(wireArgs: _WireArgs | undefined): _WireArgs {
   // the line below removes all undefined attributes
   // i.e. {a:1, b:undefined} => {a:1}
@@ -1460,11 +2124,13 @@ async function iserverFetch({
   options,
   impressionId,
   sessionArgs,
+  implicitArgs,
   wireArgs,
 }: {
   options: readonly FetchOptions[];
   impressionId?: string;
   sessionArgs: Partial<SessionArgs>;
+  implicitArgs: ImplicitArgs;
   wireArgs?: _WireArgs;
 }): Promise<{
   impression?: ImpressionImpl;
@@ -1475,7 +2141,7 @@ async function iserverFetch({
   try {
     if (
       misc.ssr &&
-      sessionArgs.ipAddress == undefined &&
+      implicitArgs.ipAddress == undefined &&
       // stifle this message in development because the dev version compiles the page on
       // every render which prints this message each time
       process.env.NODE_ENV != "development"
@@ -1499,7 +2165,7 @@ async function iserverFetch({
         impressionId: string | undefined;
       } = {
         fetchOptions,
-        args: sessionArgs,
+        args: { ...sessionArgs, ...implicitArgs },
         impressionId,
         requests: wireArgs,
       };
@@ -1573,7 +2239,7 @@ async function iserverFetch({
 
     const impression = new ImpressionImpl({
       impressionType: "real",
-      userId: sessionKeys(wireOutputs.session as SessionArgsExplicit),
+      userId: sessionKeys(wireOutputs.session as SessionArgs),
       wireArgs,
       wireOutputs,
     });
@@ -1615,24 +2281,35 @@ async function iserverFetch({
   }
 }
 
+/**
+ * Sends a beacon to the iserver to indicate an impression was viewed from cache
+ * Will only send info for outputs with a CSR provenance
+ */
 function sendImpressionBeacon<T extends FeatureNames>(
   impression: Impression<T>,
-  impressionId: string
+  impressionId: string,
+  metadata: OutputMetadata
 ) {
-  const outputs = impression.toJSON().wireOutputs as _WireOutputs;
+  // never send beacons server side, it's always going to be the same impression
+  if (misc.ssr) return;
+
+  const outputs = impression.toJSON().wireOutputs;
   const impressionIdMap: {
     [idx: string]: { impression: string; newImpression: string | undefined };
   } = {};
 
   let count = 0;
-  Object.entries(outputs).forEach(([k, v]) => {
-    // (v as unknown as string) cast necessary for empty fdl file
-    if (k != "session" && (v as unknown as string) != "OFF" && v != undefined) {
-      count += 1;
-      impressionIdMap[k] = {
-        impression: (v as unknown as { _impressionId: string })?._impressionId, // cast necessary for empty fdl file
-        newImpression: impressionId,
-      };
+  Object.entries(outputs).forEach(([k, _v]) => {
+    const v = _v as _WireOutputs[keyof Omit<_WireOutputs, "session">]; // TS not smart enough
+
+    if (k != "session" && v != "OFF" && v != undefined) {
+      if (metadata.get(k)?.provenance == "csr") {
+        count += 1;
+        impressionIdMap[k] = {
+          impression: v?._impressionId,
+          newImpression: impressionId,
+        };
+      }
     }
   });
 
@@ -1647,10 +2324,13 @@ function sendImpressionBeacon<T extends FeatureNames>(
 function updateImpressionIds<T extends FeatureNames>(
   impression: Impression<T>,
   newImpressionId: string,
-  wireArgs: _WireArgs
+  wireArgs: _WireArgs,
+  metadata: OutputMetadata
 ): Impression<T> {
   const newOutputs: _WireOutputs = {};
   for (const k of Object.keys(wireArgs) as (keyof _WireArgs)[]) {
+    if (metadata.get(k)?.provenance == "ssr") continue;
+
     const currentOutput = impression.toJSON().wireOutputs[k];
     if (currentOutput == "OFF" || currentOutput == undefined) {
       // Casting b/c it can be too much for TS to understand
@@ -1670,122 +2350,6 @@ function updateImpressionIds<T extends FeatureNames>(
     wireArgs,
     wireOutputs: newOutputs,
   });
-}
-
-function getCachedImpression<T extends FeatureNames>(
-  sessionArgs: Partial<SessionArgs>,
-  wireArgs: _WireArgs
-): {
-  cachedImpression?: Impression<T>;
-  cachedFlags?: Flags<FeatureNames>;
-  cache: Cache;
-} {
-  const cache = _getCache(sessionArgs);
-  const cachedFlags = cache.flags();
-  if (cachedFlags == undefined) return { cache };
-
-  const cachedOutputs = cache.outputs(wireArgs);
-  if (cachedOutputs == undefined) return { cache };
-
-  return {
-    cachedImpression: toImpression({
-      impressionType: "real", // we only cache real impressions, not errors or loads
-      wireArgs,
-      userId: sessionKeys(sessionArgs),
-      wireOutputs: cachedOutputs,
-    }),
-    cachedFlags,
-    cache,
-  };
-}
-
-/**
- * Async function to get the impression and on/off flags associated with a feature.
- *
- * @returns A promise that will resolve with the impression and the current set of feature flags.
- * On an error, it will return the default values for the impression and flags, as well as an additional informational error value.
- * Please note - The return value is strongly typed. A TypeDoc documentation generation bug shows it as an Object here. It returns the same values as [[useImpression]].
- *
- * @typeparam Type information for the request and returned impression. Typically inferred from the query.
- * @param query Features to request and their arguments.
- * @param sessionArgs The session args as defined in the FDL
- * @param impressionId The impression id.
- *
- */
-export async function requestImpression<T extends FeatureNames>(
-  query: Query<T>,
-  session: Session,
-  impressionId?: string
-): Promise<{
-  impression: Impression<T>;
-  flags: Flags<T>;
-  error?: CausalError;
-}> {
-  const sessionArgs = session.sessionArgs;
-
-  if (impressionId == undefined) impressionId = uuidv4();
-
-  const { cachedImpression, cachedFlags, cache } = getCachedImpression<T>(
-    sessionArgs,
-    query._wireArgs
-  );
-
-  if (cachedImpression != undefined && cachedFlags != undefined) {
-    sendImpressionBeacon(cachedImpression, impressionId);
-    return {
-      impression: updateImpressionIds(
-        cachedImpression,
-        impressionId,
-        query._wireArgs
-      ),
-      flags: cachedFlags as Flags<T>, // cast needed for older version of TS
-    };
-  }
-
-  const fetchOptions: FetchOptions[] = [];
-  if (cachedFlags == undefined) fetchOptions.push("flags");
-
-  const {
-    impression,
-    flags: responseFlags,
-    error,
-  } = await iserverFetch({
-    options: fetchOptions,
-    impressionId,
-    sessionArgs,
-    wireArgs: query._wireArgs,
-  });
-
-  if (
-    cachedFlags == undefined &&
-    responseFlags == undefined &&
-    error == undefined
-  ) {
-    log.warn("unexpected undefined flags in requestImpression");
-  }
-
-  if (responseFlags) cache.setFlags(responseFlags);
-  const returnFlags = cachedFlags ?? responseFlags ?? defaultFlags;
-
-  if (impression) {
-    cache.setOutputs(query._wireArgs, impression.toJSON().wireOutputs);
-    return {
-      impression: impression as unknown as Impression<T>,
-      flags: returnFlags as Flags<T>, // cast needed for older version of TS
-      error,
-    };
-  } else {
-    return {
-      impression: errorImpression("Fetch Failure", {
-        wireArgs: query._wireArgs,
-      }),
-      flags: returnFlags as Flags<T>, // cast needed for older version of TS
-      error: error ?? {
-        errorType: "unknown",
-        message: "unknown error",
-      },
-    };
-  }
 }
 
 const notInitializedError = {
@@ -1818,40 +2382,43 @@ export type CausalError =
   | FieldError;
 
 type FlagsNone = { state: "none" };
-type FlagsFatal<T extends FeatureNames> = { state: "fatal"; flags: Flags<T> };
 type FlagsLoading = { state: "loading" };
 type FlagsDone<T extends FeatureNames> = { state: "done"; flags: Flags<T> };
 
 type FlagsState<T extends FeatureNames> =
   | FlagsNone
-  | FlagsFatal<T>
   | FlagsLoading
   | FlagsDone<T>;
 
 /**
+ * * @deprecated
  * React hook to get the on/off flags associated with a feature
  */
-export function useFlags(session: Session): {
+export function useFlags(session?: Session): {
   loading: boolean;
   flags: Flags<FeatureNames> | undefined;
   error: CausalError | undefined;
 } {
-  const sessionArgs = session.sessionArgs;
+  const _session = useSession();
+  session = session ?? _session;
+  if (session == undefined) {
+    throw new Error(
+      "No session conext (SessionProvider), and no session passed in"
+    );
+  }
+
   const [, forceUpdate] = useReducer((x) => x + 1, 0);
   const errorState = useRef<CausalError>();
   const flagsState = useRef<FlagsState<FeatureNames>>({ state: "none" });
-  const prevSessionArgs = useRef(sessionArgs);
+  const prevSession = useRef(session);
   const prevFlushCount = useRef(_flushCount);
   let hasChange = false;
 
-  // it is important to do this before testing for changes
-  // it will invalidate the cache on sessionArgs difference and update the flush count
-  // need to do this before comparing sessionArgs so we don't re-request twice
-  const cache = _getCache(sessionArgs);
+  const cache = session._cache;
 
   // re-request if cache is busted or if the session changes
   if (
-    !argsAreSame(prevSessionArgs.current, sessionArgs) ||
+    !sessionArgsMatch(prevSession.current._args, session._args) ||
     prevFlushCount.current != _flushCount
   ) {
     // not using useEffect / dependency array for this b/c want
@@ -1861,7 +2428,7 @@ export function useFlags(session: Session): {
     flagsState.current = { state: "none" };
 
     // update prev's
-    prevSessionArgs.current = sessionArgs;
+    prevSession.current = session;
     prevFlushCount.current = _flushCount;
   }
 
@@ -1881,10 +2448,15 @@ export function useFlags(session: Session): {
 
     async function request() {
       log.debug(1, "useFlags fetch results effect: request()");
+      if (!session) {
+        throw new Error(
+          "unexpected undefined session in useFlags(), useEffect"
+        );
+      }
 
       log.debug(1, "request");
 
-      const { flags, error } = await requestFlags(session);
+      const { flags, error } = await session.requestFlags(session as Session);
       flagsState.current = {
         state: "done",
         flags,
@@ -1907,12 +2479,7 @@ export function useFlags(session: Session): {
   log.debug(3, "useFlags returning. loading", loading);
 
   let flags: Flags<FeatureNames> | undefined = undefined;
-  if (
-    flagsState.current.state == "fatal" ||
-    flagsState.current.state == "done"
-  ) {
-    flags = flagsState.current.flags;
-  }
+  if (flagsState.current.state == "done") flags = flagsState.current.flags;
 
   if (hasChange) forceUpdate();
 
@@ -1927,20 +2494,20 @@ type ImpressionNone<T extends FeatureNames> = {
   state: "none";
   impression: Impression<T>;
 };
-type ImpressionFatal<T extends FeatureNames> = {
-  state: "fatal";
-  impression: Impression<T>;
-};
+
 type ImpressionCached<T extends FeatureNames> = {
-  state: "cached";
+  state: "loadingCached" | "cached";
   newImpressionId: string;
   cachedImpression: Impression<T>;
   impression: Impression<T>;
+  metadata: OutputMetadata;
 };
+
 type ImpressionLoading<T extends FeatureNames> = {
   state: "loading";
   impression: Impression<T>;
 };
+
 type ImpressionDone<T extends FeatureNames> = {
   state: "done";
   impression: Impression<T>;
@@ -1948,34 +2515,49 @@ type ImpressionDone<T extends FeatureNames> = {
 
 type ImpressionState<T extends FeatureNames> =
   | ImpressionNone<T>
-  | ImpressionFatal<T>
   | ImpressionCached<T>
   | ImpressionLoading<T>
   | ImpressionDone<T>;
+
+export const SessionContext = React.createContext<Session | undefined>(
+  undefined
+);
+
+export function useSession(): Session | undefined {
+  const session = useContext(SessionContext);
+  return session;
+}
 
 /**
  * React hook to get both the impression and the on/off flags associated with a feature
  */
 export function useImpression<T extends FeatureNames>(
   query: Query<T>,
-  session: Session,
-  impressionId?: string
+  impressionId?: string,
+  session?: Session
 ): {
   impression: Impression<T>;
   flags: Flags<T> | undefined;
   loading: boolean;
   error?: CausalError;
 } {
-  const sessionArgs = session.sessionArgs;
+  const _sessionContext = useSession();
+  session = session ?? _sessionContext;
+  if (session == undefined) {
+    throw new Error(
+      "No session conext (SessionProvider), and no session passed in"
+    );
+  }
+
+  // _session is recognized as constant through, whereas TS doesn't
+  // know session will be non-null inside nested functions
+  const _session = session;
 
   // putting into a ref so hook always returns the same loading impression when loading
-  const _loadingImpression = useRef<Impression<T>>(
-    loadingImpression(sessionArgs)
-  );
+  const _loadingImpression = useRef<Impression<T>>(loadingImpression(session));
 
   const [, forceUpdate] = useReducer((x) => x + 1, 0);
   const errorState = useRef<CausalError>();
-  const flagsState = useRef<FlagsState<T>>({ state: "none" });
   const impressionState = useRef<ImpressionState<T>>({
     state: "none",
     impression: _loadingImpression.current,
@@ -1983,17 +2565,12 @@ export function useImpression<T extends FeatureNames>(
 
   const requestFinishTS = useRef<Date>();
   const wireArgsJson = JSON.stringify(query._wireArgs);
-  const prevSessionArgs = useRef(sessionArgs);
+  const prevSession = useRef(_session);
   const prevWireArgsJson = useRef(wireArgsJson);
   const prevFlushCount = useRef(_flushCount);
   const prevImpressionId = useRef(impressionId);
 
   let hasChange = false;
-
-  // it is important to do this before testing for changes
-  // it will invalidate the cache on sessionArgs difference and update the flush count
-  // need to do this before comparing sessionArgs so we don't re-request twice
-  const cache = _getCache(sessionArgs);
 
   // re-request as frequently as the cache expires
   // or if cache is busted
@@ -2002,11 +2579,22 @@ export function useImpression<T extends FeatureNames>(
   // of it the impression id changes
   let nextCycle: Date | undefined = undefined;
   const now = new Date();
-  if (requestFinishTS.current != undefined && cache.outputExpirySeconds)
-    nextCycle = addSeconds(requestFinishTS.current, cache.outputExpirySeconds);
+  if (
+    requestFinishTS.current != undefined &&
+    _session._cache.outputExpirySeconds
+  )
+    nextCycle = addSeconds(
+      requestFinishTS.current,
+      _session._cache.outputExpirySeconds
+    );
+
+  const sessionChanged = !sessionArgsMatch(
+    prevSession.current._args,
+    _session._args
+  );
 
   if (
-    !argsAreSame(prevSessionArgs.current, sessionArgs) ||
+    sessionChanged ||
     (nextCycle != undefined && nextCycle < now) ||
     prevWireArgsJson.current != wireArgsJson ||
     prevFlushCount.current != _flushCount ||
@@ -2024,76 +2612,70 @@ export function useImpression<T extends FeatureNames>(
       impression: _loadingImpression.current,
     };
 
-    // flag state  only need to be flushed on a sse event or session change
-    if (
-      prevFlushCount.current != _flushCount ||
-      prevSessionArgs.current != sessionArgs
-    )
-      flagsState.current = { state: "none" };
-
     // update prev's
     requestFinishTS.current = undefined;
-    prevSessionArgs.current = sessionArgs;
+    prevSession.current = _session;
     prevWireArgsJson.current = wireArgsJson;
     prevFlushCount.current = _flushCount;
     prevImpressionId.current = impressionId;
-    _loadingImpression.current = loadingImpression(sessionKeys(sessionArgs));
+    _loadingImpression.current = loadingImpression(session);
   }
 
-  if (sessionArgs == undefined) {
-    // no session is fatal
+  // get cached values
+  if (impressionState.current.state == "none") {
+    const { cachedImpression, metadata } = getCachedImpression<T>(
+      session,
+      query._wireArgs
+    );
 
-    if (impressionState.current.state != "fatal") {
-      hasChange = true;
-      impressionState.current = {
-        state: "fatal",
-        impression: errorImpression("NoSession", {
-          wireArgs: query._wireArgs,
-        }),
-      };
-    }
-    if (flagsState.current.state != "fatal") {
-      hasChange = true;
-      flagsState.current = { state: "fatal", flags: defaultFlags as Flags<T> };
-    }
-    if (errorState.current != notInitializedError) {
-      hasChange = true;
-      errorState.current = notInitializedError;
-    }
-  } else {
-    // get cached values
     if (
-      impressionState.current.state == "none" ||
-      flagsState.current.state == "none"
+      cachedImpression != undefined &&
+      impressionState.current.state == "none"
     ) {
-      const { cachedImpression, cachedFlags } = getCachedImpression<T>(
-        sessionArgs,
-        query._wireArgs
-      );
+      hasChange = true;
+      const newImpressionId = impressionId ?? uuidv4();
 
-      if (
-        cachedImpression != undefined &&
-        impressionState.current.state == "none"
-      ) {
-        hasChange = true;
-        const newImpressionId = impressionId ?? uuidv4();
+      // In order to have react hydration work w/o errors, the server side render and the client side render have to match exactly
+      // The logic we use is as follows:
+      //
+      // 1. During CSR, if we are transferring the SSR cache, we delete any other SSR cached entries.
+      //    These were unused from a different render
+      //
+      // 2. If all the cached outputs are SSR, then we render the impression immediately (both for SSR and CSR code)
+      //    This will always match on client and server b/c of step 1
+      //
+      // 3. If the cached outputs are mixed SSR and CSR, or the impression is not fully cached, then we delay the render one tick.
+      //    On the client side, we also then convert the SSR cache entries to CSR cache entries after we render
+      //    On server anything that was CSR cached will not exist, so the render will return a loading impression
+      //    On the client, by definition, render will return a loading impression (on the first tick)
+      //
+      // 4: For any SSR cached entries, never send a beacon, as it was already sent by the server.
+      //
+      // Also, note, as per above: In order to SSR with useImpression, all the features must be in the SSR cache
+
+      let allSSR = true;
+      for (const v of metadata.values()) {
+        if (v.provenance == "csr") {
+          allSSR = false;
+          break;
+        }
+      }
+
+      if (allSSR) {
         impressionState.current = {
           state: "cached",
           newImpressionId,
-          impression: updateImpressionIds(
-            cachedImpression,
-            newImpressionId,
-            query._wireArgs
-          ),
+          impression: cachedImpression,
           cachedImpression,
+          metadata,
         };
-      }
-
-      if (cachedFlags != undefined && flagsState.current.state == "none") {
-        hasChange = true;
-        flagsState.current = {
-          state: "done",
-          flags: cachedFlags as Flags<T>,
+      } else {
+        impressionState.current = {
+          state: "loadingCached",
+          newImpressionId,
+          impression: _loadingImpression.current,
+          cachedImpression,
+          metadata,
         };
       }
     }
@@ -2102,17 +2684,13 @@ export function useImpression<T extends FeatureNames>(
   // fetch results
   useEffect(() => {
     log.debug(1, "useImpression fetch results effect");
-    if (!sessionArgs) return;
 
     async function request() {
       log.debug(1, "useImpression fetch results effect: request()");
-
-      if (!sessionArgs) return;
       log.debug(1, "request");
 
-      const { impression, flags, error } = await requestImpression(
+      const { impression, error } = await _session.requestImpression(
         query,
-        session,
         impressionId
       );
       requestFinishTS.current = new Date();
@@ -2120,28 +2698,48 @@ export function useImpression<T extends FeatureNames>(
         state: "done",
         impression,
       };
-      flagsState.current = {
-        state: "done",
-        flags,
-      };
       errorState.current = error;
       forceUpdate();
     }
 
-    if (
-      impressionState.current.state == "none" ||
-      flagsState.current.state == "none"
-    ) {
-      if (impressionState.current.state == "none")
-        impressionState.current = {
-          state: "loading",
-          impression: _loadingImpression.current,
-        };
-      if (flagsState.current.state == "none")
-        flagsState.current = { state: "loading" };
+    if (impressionState.current.state == "none") {
+      impressionState.current = {
+        state: "loading",
+        impression: _loadingImpression.current,
+      };
       request();
       forceUpdate();
     }
+  });
+
+  // make impression available on second tick
+  useEffect(() => {
+    log.debug(1, "useImpression useEffect: loadingCached");
+
+    async function delayCache() {
+      await new Promise((r) => setTimeout(r, 0));
+
+      if (impressionState.current.state == "loadingCached") {
+        const { cachedImpression, newImpressionId, metadata } =
+          impressionState.current;
+
+        impressionState.current = {
+          state: "cached",
+          newImpressionId,
+          impression: updateImpressionIds(
+            cachedImpression,
+            newImpressionId,
+            query._wireArgs,
+            metadata
+          ),
+          cachedImpression,
+          metadata,
+        };
+        forceUpdate();
+      }
+    }
+
+    if (impressionState.current.state == "loadingCached") delayCache();
   });
 
   // send beacons for cached impressions
@@ -2150,11 +2748,14 @@ export function useImpression<T extends FeatureNames>(
     if (impressionState.current.state == "cached") {
       sendImpressionBeacon(
         impressionState.current.cachedImpression,
-        impressionState.current.newImpressionId
+        impressionState.current.newImpressionId,
+        impressionState.current.metadata
       );
+      const impression = impressionState.current.impression;
+      _session._cache.updateProvenance(impression);
       impressionState.current = {
         state: "done",
-        impression: impressionState.current.impression,
+        impression,
       };
     }
   });
@@ -2163,25 +2764,17 @@ export function useImpression<T extends FeatureNames>(
   const loading =
     impressionState.current.state == "none" ||
     impressionState.current.state == "loading" ||
-    flagsState.current.state == "none" ||
-    flagsState.current.state == "loading";
-
+    impressionState.current.state == "loadingCached";
   log.debug(3, "useImpression returning. loading", loading);
-
-  let flags: Flags<T> | undefined = undefined;
-  if (
-    flagsState.current.state == "fatal" ||
-    flagsState.current.state == "done"
-  ) {
-    flags = flagsState.current.flags;
-  }
 
   if (hasChange) forceUpdate();
 
+  const impression = impressionState.current.impression;
+  const flags = flagsFromImpression(impression);
   return {
     loading,
-    impression: impressionState.current.impression,
-    flags: flags,
+    impression,
+    flags,
     error: errorState.current,
   };
 }

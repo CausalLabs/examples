@@ -3,7 +3,6 @@ import { useState } from "react";
 import {
   createQuery,
   ImpressionJSON,
-  requestImpression,
   SelectFeatures,
   Session,
   toImpression,
@@ -32,11 +31,10 @@ export const getServerSideProps: GetServerSideProps<SSRProps> = async (
     RatingBox: { product: product.name },
   });
 
-  const sessionArgs = { deviceId: getOrGenDeviceId(context) };
+  const session = new Session({ deviceId: getOrGenDeviceId(context) });
   const impressionId = "imp-1234";
-  const { impression, error } = await requestImpression(
+  const { impression, error } = await session.requestImpression(
     query,
-    new Session(sessionArgs, context.req),
     impressionId
   );
 
