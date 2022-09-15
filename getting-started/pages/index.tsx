@@ -11,6 +11,10 @@ export default function index() {
       </p>
       <h2>Getting Started with TypeScript</h2>
       <p>
+        All the examples are built on <a href="https://nextjs.org/">Next.js</a>
+      </p>
+
+      <p>
         Please view the{" "}
         <a href="https://github.com/CausalLabs/examples/tree/main/getting-started">
           getting-started
@@ -19,7 +23,8 @@ export default function index() {
       </p>
 
       <p>
-        We recommend following the examples in order as they build on each other
+        We recommend following the examples in order as they build on each
+        other.
       </p>
       <ol>
         <li>
@@ -30,28 +35,25 @@ export default function index() {
           )
         </li>
         <li>
-          <a href="ssr-next-example?pid=iphone">
-            React SSR Example using Next.JS
-          </a>{" "}
-          (
-          <a href="https://github.com/CausalLabs/examples/blob/main/getting-started/pages/ssr-next-example.tsx">
+          <a href="ssr-cache?pid=iphone">React SSR Example</a> (
+          <a href="https://github.com/CausalLabs/examples/blob/main/getting-started/pages/ssr-cache.tsx">
             source
           </a>
           )
         </li>
         <li>
-          <a href="static-events-next-example?pid=iphone">
+          <a href="ssr-props?pid=iphone">React SSR Example (alternate)</a> (
+          <a href="https://github.com/CausalLabs/examples/blob/main/getting-started/pages/ssr-props.tsx">
+            source
+          </a>
+          )
+        </li>
+        <li>
+          <a href="events-microservice?pid=iphone">
             Microservice / Static Events Example
           </a>
           ({" "}
-          <a href="https://github.com/CausalLabs/examples/blob/main/getting-started/pages/static-events-next-example.tsx">
-            source
-          </a>
-          )
-        </li>
-        <li>
-          <a href="react-flags-example?pid=iphone">Feature Flag Example</a>({" "}
-          <a href="https://github.com/CausalLabs/examples/blob/main/getting-started/pages/react-flags-example.tsx">
+          <a href="https://github.com/CausalLabs/examples/blob/main/getting-started/pages/events-microservice.tsx">
             source
           </a>
           )

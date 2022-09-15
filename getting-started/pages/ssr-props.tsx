@@ -1,4 +1,4 @@
-import { GetServerSideProps } from "next";
+import { GetServerSidePropsContext } from "next";
 import { useState } from "react";
 import {
   createQuery,
@@ -8,31 +8,28 @@ import {
   toImpression,
 } from "../causal";
 import { RatingWidget } from "../components/RatingWidget";
-import { getOrGenDeviceId } from "../utils";
+import { getOrGenDeviceId, products } from "../utils";
 
-type RatingFeatures = SelectFeatures<"RatingBox">;
+type FeaturesToQuery = SelectFeatures<"RatingBox">;
 
 type SSRProps = {
   product: typeof products[keyof typeof products];
-  json: ImpressionJSON<RatingFeatures>;
+  json: ImpressionJSON<FeaturesToQuery>;
 };
 
-export const getServerSideProps: GetServerSideProps<SSRProps> = async (
-  context
-) => {
-  const product = products[context.query.pid as keyof typeof products];
-  if (product == undefined) {
-    return {
-      redirect: { destination: "ssr-example?pid=iphone" },
-    } as any; // eslint-disable-line;
-  }
+export async function getServerSideProps(
+  context: GetServerSidePropsContext
+): Promise<{ props: SSRProps }> {
+  const product =
+    products[context.query.pid as keyof typeof products] ?? products["iphone"];
 
-  const query = createQuery<RatingFeatures>({
+  const query = createQuery<FeaturesToQuery>({
     RatingBox: { product: product.name },
   });
 
-  const session = new Session({ deviceId: getOrGenDeviceId(context) });
   const impressionId = "imp-1234";
+
+  const session = new Session({ deviceId: getOrGenDeviceId(context) });
   const { impression, error } = await session.requestImpression(
     query,
     impressionId
@@ -47,7 +44,7 @@ export const getServerSideProps: GetServerSideProps<SSRProps> = async (
 
   const props: SSRProps = { product, json: impression.toJSON() };
   return { props };
-};
+}
 
 export default function ProductInfo({ json, product }: SSRProps) {
   const [rating, setRating] = useState(0);
@@ -70,19 +67,9 @@ export default function ProductInfo({ json, product }: SSRProps) {
               impression.RatingBox?.signalRating({ stars: rating });
             }}
           />
-          <a href={"ssr-next-example?pid=" + product.next}>Rate Another</a>
+          <a href={"ssr-props?pid=" + product.next}>Rate Another</a>
         </>
       )}
     </div>
   );
 }
-
-const products = {
-  iphone: { name: "iPhone 13", url: "/iphone13.webp", next: "pixel" },
-  pixel: { name: "Pixel 5", url: "/pixel5.webp", next: "fold" },
-  fold: {
-    name: "Samsung Galaxy Fold",
-    url: "/galaxyfold.webp",
-    next: "iphone",
-  },
-};
