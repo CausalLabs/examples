@@ -64,7 +64,7 @@ export function getOrGenDeviceId(
 /**
  * A component that only renders child components on the client side
  */
-function ClientOnly({ children }: { children?: ReactNode }) {
+export function ClientOnly({ children }: { children?: ReactNode }) {
   const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
@@ -78,4 +78,12 @@ function ClientOnly({ children }: { children?: ReactNode }) {
   return <>{children}</>;
 }
 
-export default ClientOnly;
+export const products = {
+  iphone: { name: "iPhone 13", url: "/iphone13.webp", next: "pixel" },
+  pixel: { name: "Pixel 5", url: "/pixel5.webp", next: "fold" },
+  fold: {
+    name: "Samsung Galaxy Fold",
+    url: "/galaxyfold.webp",
+    next: "iphone",
+  },
+};

@@ -7,13 +7,14 @@ import {
   useImpression,
 } from "../causal";
 import { RatingWidget } from "../components/RatingWidget";
-import { getOrGenDeviceId } from "../utils";
+import { getOrGenDeviceId, products } from "../utils";
 
 export default function Page() {
   const router = useRouter();
-  const session = new Session({ deviceId: getOrGenDeviceId(router) });
-  const product = products[router.query.pid as keyof typeof products];
 
+  const session = new Session({ deviceId: getOrGenDeviceId(router) });
+
+  const product = products[router.query.pid as keyof typeof products];
   if (product == undefined) {
     return <></>; // Product not found
   }
@@ -25,12 +26,14 @@ export default function Page() {
   );
 }
 
-function ProductInfo({
+export function ProductInfo({
   product,
 }: {
   product: { name: string; url: string; next: string };
 }) {
   const [rating, setRating] = useState(0);
+  const router = useRouter();
+
   const query = queryBuilder().getRatingBox({ product: product.name });
   const { impression, flags, error } = useImpression(query);
 
@@ -61,19 +64,9 @@ function ProductInfo({
               impression.RatingBox?.signalRating({ stars: newRating });
             }}
           />
-          <a href={"react-example?pid=" + product.next}>Rate Another</a>
+          <a href={router.route + "?pid=" + product.next}>Rate Another</a>
         </>
       )}
     </div>
   );
 }
-
-const products = {
-  iphone: { name: "iPhone 13", url: "/iphone13.webp", next: "pixel" },
-  pixel: { name: "Pixel 5", url: "/pixel5.webp", next: "fold" },
-  fold: {
-    name: "Samsung Galaxy Fold",
-    url: "/galaxyfold.webp",
-    next: "iphone",
-  },
-};

@@ -1,6 +1,6 @@
 import { useRouter } from "next/router";
 import React from "react";
-import ClientOnly, { getOrGenDeviceId } from "../utils";
+import { ClientOnly, getOrGenDeviceId } from "../utils";
 
 export default function Page() {
   return (
