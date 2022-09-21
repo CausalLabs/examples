@@ -41,15 +41,15 @@ export class RatingBox {
     signalRating( { stars } 
         : {  stars : number  } ) : void
     {
-      RatingBox.signalRating( this._.impression.userId, this._.impressionId, { stars, } );
+      RatingBox.signalRating( this._.impression.sessionKeys, this._.impressionId, { stars, } );
     }
     /** Occurs each time a rating is collected   
       *  */
-    static signalRating( userId : UserIds, impressionId : string,  { stars } 
+    static signalRating( sessionKeys: SessionKeys, impressionId : string,  { stars } 
         : {  stars : number  } ) : void
     {
         const _data = { 
-          id : userId,
+          id : sessionKeys,
           feature: "RatingBox",
           event: "Rating",
           impressionId: impressionId,
@@ -134,15 +134,15 @@ export class Feature2 {
     signalExampleEvent( { data } 
         : {  data : string  } ) : void
     {
-      Feature2.signalExampleEvent( this._.impression.userId, this._.impressionId, { data, } );
+      Feature2.signalExampleEvent( this._.impression.sessionKeys, this._.impressionId, { data, } );
     }
     /** Example event   
       *  */
-    static signalExampleEvent( userId : UserIds, impressionId : string,  { data } 
+    static signalExampleEvent( sessionKeys: SessionKeys, impressionId : string,  { data } 
         : {  data : string  } ) : void
     {
         const _data = { 
-          id : userId,
+          id : sessionKeys,
           feature: "Feature2",
           event: "ExampleEvent",
           impressionId: impressionId,
@@ -190,8 +190,8 @@ class ImpressionImpl implements Impression<FeatureNames> {
     return this._.json;
   }
 
-  get userId() {
-    return this._.json.userId;
+  get sessionKeys() {
+    return this._.json.sessionKeys;
   }
 
   constructor(impressionJson: ImpressionJSON<FeatureNames>) {
@@ -369,12 +369,12 @@ export type _WireOutputs = {
     Feature2?:Feature2WireOutputs | "OFF";
 }
 
-type UserIds = {
+type SessionKeys = {
     /**  Default: null */
     deviceId?: string
     };
 
-function sessionKeys( s : Partial<SessionArgs> ) : UserIds {
+function sessionKeys( s : Partial<SessionArgs> ) : SessionKeys {
   return {
     deviceId : s?.deviceId,
   };
@@ -393,7 +393,7 @@ type Impression<T extends FeatureNames> =
     & ("RatingBox" extends T ? { RatingBox?:RatingBox } : unknown)
     & ("ProductInfo" extends T ? { ProductInfo?:ProductInfo } : unknown)
     & ("Feature2" extends T ? { Feature2?:Feature2 } : unknown)
-    & { userId: UserIds }
+    & { sessionKeys: SessionKeys }
     & { toJSON(): ImpressionJSON<T> }
     & { _: {json: ImpressionJSON<T>} }
     & {
@@ -655,7 +655,7 @@ export class Session {
   }
 
   /**
-   * @deprecated Please use [[requestImpression]]. 
+   * @deprecated Please use [[requestImpression]].
    * Async function to get the on/off flags associated with a feature.
    *
    * @returns A promise that will resolve with the current set of feature flags.
@@ -821,7 +821,7 @@ function getCachedImpression<T extends FeatureNames>(
   const cachedImpression: Impression<T> = toImpression({
     impressionType: "real", // only cache real impressions, not errors or loads
     wireArgs,
-    userId: sessionKeys(session._.args),
+    sessionKeys: sessionKeys(session._.args),
     wireOutputs: cachedOutputs,
   });
 
@@ -839,7 +839,7 @@ function loadingImpression<T extends FeatureNames>(
 ): Impression<T> {
   const impression = new ImpressionImpl({
     impressionType: "loading",
-    userId: sessionKeys(session._.args),
+    sessionKeys: sessionKeys(session._.args),
     wireArgs: {},
     wireOutputs: {} as _WireOutputs,
   });
@@ -852,7 +852,7 @@ function errorImpression<T extends FeatureNames>(
   { wireArgs }: Pick<ImpressionJSON<T>, "wireArgs">
 ): Impression<T> {
   const impression = new ImpressionImpl({
-    userId: session ? sessionKeys(session._.args) : ({} as UserIds),
+    sessionKeys: session ? sessionKeys(session._.args) : ({} as SessionKeys),
     impressionType: "error",
     reason,
     wireArgs: cleanWireArgs(wireArgs),
@@ -2113,7 +2113,7 @@ export type ImpressionJSON<T extends FeatureNames> = {
   t?: T; // unused - suppresses T is unused error
 
   /** @internal */
-  userId: UserIds;
+  sessionKeys: SessionKeys;
 
   /** @internal */
   impressionType: "real" | "loading" | "error";
@@ -2133,13 +2133,13 @@ export type ImpressionJSON<T extends FeatureNames> = {
  */
 export function toImpression<T extends FeatureNames>({
   impressionType,
-  userId,
+  sessionKeys,
   wireArgs,
   wireOutputs: outputs,
 }: ImpressionJSON<T>): Impression<T> {
   const impression = new ImpressionImpl({
     impressionType,
-    userId,
+    sessionKeys,
     wireArgs,
     wireOutputs: outputs as _WireOutputs,
   });
@@ -2299,7 +2299,7 @@ async function iserverFetch({
 
     const impression = new ImpressionImpl({
       impressionType: "real",
-      userId: sessionKeys(wireOutputs.session as SessionArgs),
+      sessionKeys: sessionKeys(wireOutputs.session as SessionArgs),
       wireArgs,
       wireOutputs,
     });
@@ -2375,7 +2375,7 @@ function sendImpressionBeacon<T extends FeatureNames>(
 
   if (count > 0) {
     network.sendBeacon({
-      id: impression.userId,
+      id: impression.sessionKeys,
       impressions: impressionIdMap,
     });
   }
@@ -2406,7 +2406,7 @@ function updateImpressionIds<T extends FeatureNames>(
   }
   return toImpression({
     impressionType: impression.toJSON().impressionType,
-    userId: impression.userId,
+    sessionKeys: impression.sessionKeys,
     wireArgs,
     wireOutputs: newOutputs,
   });
