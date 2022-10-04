@@ -2,6 +2,7 @@ import { NextPageContext } from "next";
 import type { AppContext, AppInitialProps, AppProps } from "next/app";
 import App from "next/app";
 import { useRouter } from "next/router";
+import { v4 as uuidv4 } from "uuid";
 import {
   qb,
   Session,
@@ -11,10 +12,11 @@ import {
 } from "../causal";
 import Feature2 from "../components/Feature2";
 import "../styles/globals.css";
-import { getOrMakeDeviceId } from "../utils";
+import { getOrMakeDeviceId, RequestIdContext } from "../utils";
 
-type MyAppProps = AppProps & { sessionJson: SessionJSON };
-type MyAppInitialProps = AppInitialProps & { sessionJson: SessionJSON };
+type MyProps = { sessionJson: SessionJSON; requestId: string };
+type MyAppProps = AppProps & MyProps;
+type MyAppInitialProps = AppInitialProps & MyProps;
 
 function StatsLogger() {
   const session = useSession();
@@ -47,16 +49,18 @@ function StatsLogger() {
   return null;
 }
 
-function MyApp({ Component, pageProps, sessionJson }: MyAppProps) {
+function MyApp({ Component, pageProps, sessionJson, requestId }: MyAppProps) {
   const session = Session.fromJSON(sessionJson);
   session.clearImpressionStats();
 
   const result = (
     <SessionContext.Provider value={session}>
-      <Feature2>
-        <Component {...pageProps} />
-      </Feature2>
-      <StatsLogger />
+      <RequestIdContext.Provider value={requestId}>
+        <Feature2>
+          <Component {...pageProps} />
+        </Feature2>
+        <StatsLogger />
+      </RequestIdContext.Provider>
     </SessionContext.Provider>
   );
 
@@ -66,10 +70,35 @@ function MyApp({ Component, pageProps, sessionJson }: MyAppProps) {
 MyApp.getInitialProps = async (
   context: AppContext
 ): Promise<MyAppInitialProps> => {
+  const debugLog = (msg: string) => {
+    // console.log(msg);
+  };
+
+  debugLog("getInitialProps");
+
   const deviceId = getOrMakeDeviceId(context.ctx);
+  debugLog(`deviceId = ${deviceId}`);
+
+  // In this example, we are using a new impressionId for every request
+  //
+  // In general, we recommend that you use explicit impression ids
+  // to control when impressions are registered.
+  //
+  // If you don't use explicit impression ids, impression lifecycles will be
+  // tied to react component lifecycles.
+  // This may, or may not be, what you want
+  //
+  // For example, in this example app, Feature2 would never get
+  // a new impression without explicit impression ids because
+  // it is never unmounted.
+  const requestId = uuidv4();
+  debugLog(`requestId = ${requestId}`);
 
   const session = Session.fromDeviceId(deviceId, context.ctx.req);
-  await session.requestImpression(qb().getFeature2({ exampleArg: "123" }));
+  await session.requestImpression(
+    qb().getFeature2({ exampleArg: "123" }),
+    requestId
+  );
 
   const appProps = await App.getInitialProps({
     ...context,
@@ -81,7 +110,11 @@ MyApp.getInitialProps = async (
     },
   });
 
-  const ret = { ...appProps, sessionJson: session.toJSON() };
+  const ret = {
+    ...appProps,
+    sessionJson: session.toJSON(),
+    requestId,
+  };
   return ret;
 };
 

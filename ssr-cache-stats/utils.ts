@@ -2,6 +2,7 @@ import Cookies from "cookies";
 import { IncomingMessage, ServerResponse } from "http";
 import { v4 as uuidv4 } from "uuid";
 import cookie from "react-cookies";
+import React from "react";
 
 // if context is undefined assumes client side and use browser cookies
 // otherwise assumes server side and pulls cookies out of the request object
@@ -31,7 +32,11 @@ export function getOrMakeDeviceId(context?: {
     const id = uuidv4();
     const date = new Date();
     date.setFullYear(2050);
-    cookie.save("deviceId", id, { expires: date });
+    cookie.save("deviceId", id, { expires: date, httpOnly: false });
     return id;
   }
 }
+
+export const RequestIdContext = React.createContext<string | undefined>(
+  undefined
+);

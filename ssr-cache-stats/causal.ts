@@ -9,7 +9,7 @@ import React, { useEffect, useReducer, useRef, useContext } from "react";
 /** Wraps a rating box that we can put on various product pages to collect ratings from our users
  *   */
 type RatingBoxWireOutputs = {
-  readonly callToAction: string;
+  readonly callToAction: string | undefined;
   readonly _impressionId: string;
 }
 
@@ -65,7 +65,7 @@ export class RatingBox {
     this._ = {impression, impressionId: outputs._impressionId};
     this.product = args.product;
     if (outputs.callToAction !== undefined) {
-        this.callToAction = outputs.callToAction;
+        this.callToAction = outputs.callToAction ?? undefined;
     } else {
         this.callToAction = "Rate this product!";    }
   }
@@ -102,7 +102,7 @@ export class ProductInfo {
 /** Another feature just for demonstration purposes
  *   */
 type Feature2WireOutputs = {
-  readonly exampleOutput: string;
+  readonly exampleOutput: string | undefined;
   readonly _impressionId: string;
 }
 
@@ -158,7 +158,7 @@ export class Feature2 {
     this._ = {impression, impressionId: outputs._impressionId};
     this.exampleArg = args.exampleArg;
     if (outputs.exampleOutput !== undefined) {
-        this.exampleOutput = outputs.exampleOutput;
+        this.exampleOutput = outputs.exampleOutput ?? undefined;
     } else {
         this.exampleOutput = "Example output";    }
   }
@@ -447,38 +447,36 @@ export class Session {
     args: Partial<SessionArgs>;
     implicitArgs: ImplicitArgs;
     cache: _Cache;
-    ssrCacheType: SessionJSON["ssr"]["cacheType"];
-    csrCacheType: SessionJSON["csr"]["cacheType"];
+    activeVariants: ActiveVariant[];
+
+    // the features requested since this session object was constructed
+    requestedFeatures: Set<FeatureNames>;
   };
 
-  constructor(
-    args: SessionArgs,
-    req?: IncomingMessage,
-    options?: {
-      ssrCacheType?: SessionJSON["ssr"]["cacheType"];
-      csrCacheType?: SessionJSON["csr"]["cacheType"];
-    }
-  ) {
-    const { ssrCacheType, csrCacheType } = options ?? {};
-
-    const _ssrCacheType = ssrCacheType ?? cacheOptions.ssrCacheType;
-    const _csrCacheType = csrCacheType ?? cacheOptions.csrCacheType;
-
-    const _cacheType = misc.ssr ? _ssrCacheType : _csrCacheType;
-    const _backingStore = makeBackingStore(_cacheType);
+  constructor(args: SessionArgs, req?: IncomingMessage) {
+    const _backingStore = makeBackingStore(
+      misc.ssr ? cacheOptions.ssrCacheType : cacheOptions.csrCacheType,
+      cacheOptions.makeCustomStore
+    );
     const _cache = new _Cache(args, _backingStore, cacheOptions);
 
     this._ = {
       args,
-      ssrCacheType: _ssrCacheType,
-      csrCacheType: _csrCacheType,
       cache: _cache,
       implicitArgs: {},
+      requestedFeatures: new Set(),
+      activeVariants: [],
     };
 
     if (req) this.addIncomingMessageArgs(req);
-
     this._.cache.testAndTouchSession();
+  }
+
+  /**
+   * The currently active experiment variants
+   */
+  get activeVariants(): ActiveVariant[] {
+    return this._.activeVariants;
   }
 
   /**
@@ -487,16 +485,24 @@ export class Session {
    * @returns the serialized JSON
    */
   toJSON(): SessionJSON {
-    const json = {
+    const cacheJson: Record<string, _CacheStoreEntry> = {};
+    for (const key of this._.cache.backingStore.keys()) {
+      let entry = this._.cache.backingStore.get(key);
+      if (entry) {
+        if (this._.requestedFeatures.has(key as FeatureNames)) {
+          // b/c this cache is getting transferred,
+          // the first read from cache has already accounted for
+          entry = { ...entry, suppressBeaconCount: 1 };
+          cacheJson[key] = entry;
+        } else cacheJson[key] = entry;
+      }
+    }
+
+    const json: SessionJSON = {
       sessionArgs: this._.args,
-      ssr: {
-        cacheType: this._.ssrCacheType,
-        cacheJson: misc.ssr ? this._.cache.backingStore.getJSON() : undefined,
-      },
-      csr: {
-        cacheType: this._.csrCacheType,
-        cacheJson: misc.ssr ? undefined : this._.cache.backingStore.getJSON(),
-      },
+      cacheJson,
+      originator: misc.ssr ? "ssr" : "csr",
+      activeVariants: this.activeVariants,
     };
 
     // the line below removes all undefined attributes
@@ -512,33 +518,32 @@ export class Session {
    * @returns the serialized JSON
    */
   static fromJSON(json: SessionJSON): Session {
-    // if we are using local storage (i.e. share backing cache) and the session args are different,
-    // creating the session here will (correctly) clear all the entries
-    const session = new Session(json.sessionArgs as SessionArgs, undefined, {
-      ssrCacheType: json.ssr.cacheType,
-      csrCacheType: json.csr.cacheType,
-    });
+    // if the session args are different,
+    // creating the session will (correctly) clear the cache
+    const session = new Session(json.sessionArgs as SessionArgs);
+    session._.activeVariants = json.activeVariants;
 
-    if (json.ssr.cacheJson && misc.ssr) {
-      // ssr to ssr
-      session._.cache.backingStore.setJSON(json.ssr.cacheJson);
-    } else if (json.ssr.cacheJson && !misc.ssr) {
-      // ssr to csr
-      const ssrStore = makeBackingStore(json.ssr.cacheType);
-      ssrStore.setJSON(json.ssr.cacheJson);
+    // if we are going from csr to csr (i.e. we are in the same browser)
+    // and we are using local storage as the backing store, no need to actually transfer
+    const csrSelfDelete = false;
 
-      session._.cache.backingStore.delAll({ provenance: "ssr" });
+    const delAll =
+      csrSelfDelete ||
+      misc.ssr == true ||
+      json.originator == "ssr" ||
+      (cacheOptions.csrCacheType != "localStorage" &&
+        cacheOptions.csrCacheType != "customLocalStorage");
 
-      _Cache.transferTo(ssrStore, session._.cache.backingStore);
+    // we are doing a cache transfer, assume the incoming cache
+    // this avoids issues with hydration
+    if (delAll) session._.cache.backingStore.delAll();
 
-      session._.cache.backingStore.setProvenance(_cacheInfo, "csr");
-      session._.cache.backingStore.setProvenance("session", "csr");
-    } else if (json.csr && !misc.ssr) {
-      // csr to csr
-      session._.cache.backingStore.setJSON(json.csr.cacheJson);
-    } else {
-      // csr to ssr ?
-      log.warn("trying to transfer csr cache to ssr, ignoring");
+    // transfer the cache entries
+    const cacheJson = json.cacheJson;
+    if (cacheJson != undefined) {
+      for (const [k, entry] of Object.entries(cacheJson)) {
+        if (entry) session._.cache.backingStore.set(k, entry);
+      }
     }
 
     return session;
@@ -581,6 +586,10 @@ export class Session {
   }> {
     if (impressionId == undefined) impressionId = uuidv4();
 
+    Object.keys(query._.wireArgs).forEach((k) =>
+      this._.requestedFeatures.add(k as FeatureNames)
+    );
+
     const cache = this._.cache;
 
     const { cachedImpression, cachedFlags, metadata } = getCachedImpression<T>(
@@ -593,25 +602,15 @@ export class Session {
       cachedFlags != undefined &&
       metadata != undefined
     ) {
-      let allSSR = true;
-      for (const v of metadata.values()) {
-        if (v.provenance == "csr") {
-          allSSR = false;
-          break;
-        }
-      }
-
-      // if the cached impression is not entirely from SSR, delay one tick
-      if (!allSSR) await new Promise((r) => setTimeout(r, 0));
-
-      sendImpressionBeacon(cachedImpression, impressionId, metadata);
-      const impression = updateImpressionIds(
-        cachedImpression,
-        impressionId,
-        query._.wireArgs,
-        metadata
-      );
-      this._.cache.updateProvenance(impression);
+      let impression: Impression<T>;
+      if (sendImpressionBeacon(cachedImpression, impressionId, metadata)) {
+        impression = updateImpressionIds(
+          cachedImpression,
+          impressionId,
+          query._.wireArgs
+        );
+      } else impression = cachedImpression;
+      this._.cache.updateFromMetadata(metadata);
       return {
         impression,
         flags: cachedFlags as Flags<T>, // cast needed for older version of TS
@@ -620,7 +619,7 @@ export class Session {
 
     const fetchOptions: FetchOptions[] = [];
 
-    const { flags, impression, error } = await iserverFetch({
+    const { flags, impression, error, activeVariants } = await iserverFetch({
       options: fetchOptions,
       impressionId,
       sessionArgs: this._.args,
@@ -630,6 +629,8 @@ export class Session {
 
     // not needed for the impression stuff, but might as well cache them since we got them
     if (flags) cache.setFlags(flags);
+
+    if (activeVariants) this._.activeVariants = activeVariants;
 
     if (impression) {
       cache.setOutputs(query._.wireArgs, impression.toJSON().wireOutputs);
@@ -738,7 +739,8 @@ type ImplicitArgs = {
 };
 
 function makeBackingStore(
-  cacheType: SessionJSON["ssr"]["cacheType"] | SessionJSON["csr"]["cacheType"]
+  cacheType: CacheType,
+  makeCustomStore?: () => _BackingStore
 ): _BackingStore {
   switch (cacheType) {
     case "none":
@@ -747,6 +749,15 @@ function makeBackingStore(
       return new _InMemoryStore();
     case "localStorage":
       return new LocalStorageStore();
+    case "custom":
+    case "customLocalStorage":
+      return (
+        makeCustomStore ??
+        (() => {
+          log.warn("no makeCustomStore");
+          return new NoOpStore();
+        })
+      )();
     default:
       log.error("unknown cache type");
       const _: never = cacheType;
@@ -792,7 +803,7 @@ function getCachedImpression(
 ): {
   cachedImpression?: undefined;
   cachedFlags?: undefined;
-  metadata?: undefined;
+  metadata?: Map<string, EntryMetaData>;
 };
 
 function getCachedImpression<T extends FeatureNames>(
@@ -801,7 +812,7 @@ function getCachedImpression<T extends FeatureNames>(
 ): {
   cachedImpression: Impression<T>;
   cachedFlags: Flags<T>;
-  metadata: OutputMetadata;
+  metadata: Map<string, EntryMetaData>;
 };
 
 function getCachedImpression<T extends FeatureNames>(
@@ -810,7 +821,7 @@ function getCachedImpression<T extends FeatureNames>(
 ): {
   cachedImpression?: Impression<T>;
   cachedFlags?: Flags<T>;
-  metadata?: OutputMetadata;
+  metadata?: Map<string, EntryMetaData>;
 } {
   const cache = session._.cache;
 
@@ -861,19 +872,30 @@ function errorImpression<T extends FeatureNames>(
   return impression as unknown as Impression<T>;
 }
 
+/** Type of cache to use */
+type CacheType =
+  /** Don't cache */
+  | "none"
+  /** Use Local Storage */
+  | "localStorage"
+  /** Use a in memory cache */
+  | "inMemory"
+  /** Use a custom cache (makeBackingStore function must be set) */
+  | "custom"
+  /**
+   * Use a custom cache (makeBackingStore function must be set)
+   * Treated like localStorage (i.e. cache is assumed to be shared on client)
+   */
+  | "customLocalStorage";
+
 /**
  * A session converted to JSON. Used in conjunction with [[Session.toJSON]] and [[Session.fromJSON]]. These are useful to transfer a session across a JSON serialization boundary
  */
 export type SessionJSON = {
   sessionArgs: Partial<SessionArgs>;
-  ssr: {
-    cacheType: "none" | "inMemory";
-    cacheJson: unknown | undefined;
-  };
-  csr: {
-    cacheType: "none" | "localStorage" | "inMemory";
-    cacheJson: unknown | undefined;
-  };
+  originator: "ssr" | "csr";
+  cacheJson: Record<string, _CacheStoreEntry> | undefined;
+  activeVariants: ActiveVariant[];
 };
 
 /**
@@ -885,94 +907,28 @@ export class _InMemoryStore implements _BackingStore {
   // this also prevents any truth equality based on references
   map = new Map<string, string>();
 
-  get(key: string):
-    | undefined
-    | {
-        identity: string;
-        value: unknown;
-        created: Date;
-        expires: Date;
-        provenance: "ssr" | "csr";
-      } {
+  get(key: string): undefined | _CacheStoreEntry {
     const raw = this.map.get(key);
     if (raw == undefined) return undefined;
-    const { identity, value, created, expires, provenance }: _StoreItem =
-      JSON.parse(raw);
-    const now = new Date();
-    const createdTS = new Date(created);
-    const expiresTS = new Date(expires);
-
-    if (expiresTS < now) {
-      this.map.delete(key);
-      return undefined;
-    }
-    return {
-      identity,
-      value,
-      created: createdTS,
-      expires: expiresTS,
-      provenance,
-    };
+    const entry: _CacheStoreEntry = JSON.parse(raw);
+    return entry;
   }
 
-  set({
-    key,
-    identity,
-    value,
-    expires,
-    created,
-    provenance,
-  }: {
-    key: string;
-    identity: string;
-    value: unknown;
-    expires: Date;
-    created?: Date;
-    provenance?: "ssr" | "csr";
-  }) {
-    const createdString = (created ?? new Date()).toISOString();
-    const expiresString = expires.toISOString();
-    provenance = provenance ?? (misc.ssr ? "ssr" : "csr");
-    const toStore: _StoreItem = {
-      created: createdString,
-      expires: expiresString,
-      identity,
-      value,
-      provenance,
-    };
-    return this.map.set(key, JSON.stringify(toStore));
-  }
-
-  getProvenance(key: string): "ssr" | "csr" | undefined {
-    const item = this.get(key);
-    if (item == undefined) return undefined;
-    return item.provenance;
-  }
-
-  setProvenance(key: string, provenance: "ssr" | "csr") {
-    const item = this.get(key);
-    if (item == undefined) {
-    } else {
-      item.provenance = provenance;
-      this.set({ key, ...item });
-    }
+  set(key: string, storeEntry: _CacheStoreEntry) {
+    return this.map.set(key, JSON.stringify(storeEntry));
   }
 
   del(key: string) {
     return this.map.delete(key);
   }
 
-  delAll({ provenance }: { provenance: "ssr" | "csr" | "all" }): void {
-    switch (provenance) {
-      case "all":
-        this.map = new Map<string, string>();
-        break;
-      case "ssr":
-      case "csr":
-        for (const k of this.keys()) {
-          const item = this.get(k);
-          if (item?.provenance == provenance) this.del(k);
-        }
+  delAll(filter?: (entry: _CacheStoreEntry) => boolean): void {
+    if (filter == undefined) this.map = new Map<string, string>();
+    else {
+      for (const k of this.keys()) {
+        const entry = this.get(k);
+        if (entry == undefined || filter(entry)) this.del(k);
+      }
     }
   }
 
@@ -982,20 +938,6 @@ export class _InMemoryStore implements _BackingStore {
 
   keys(): string[] {
     return [...this.map.keys()];
-  }
-
-  getJSON(): unknown {
-    return [...this.map.entries()].reduce(
-      (obj: Record<string, unknown>, [key, val]) => {
-        obj[key] = val;
-        return obj;
-      },
-      {}
-    );
-  }
-
-  setJSON(json: unknown): void {
-    this.map = new Map(Object.entries(json as Record<string, string>));
   }
 
   dontStore() {
@@ -1033,56 +975,58 @@ let _flushCount = 0;
 
 /**
  * @internal
- * Do not use - only exported for testing
+ * Do not use
  */
 export type _BackingStore = {
-  get(key: string):
-    | undefined
-    | {
-        identity: string;
-        value: unknown;
-        created: Date;
-        expires: Date;
-        provenance: "ssr" | "csr";
-      };
-  set({
-    key,
-    identity,
-    value,
-    expires,
-    created,
-    provenance,
-  }: {
-    key: string;
-    identity: string;
-    value: unknown;
-    expires: Date;
-    created?: Date;
-    provenance?: "ssr" | "csr";
-  }): void;
+  get(key: string): undefined | _CacheStoreEntry;
+  set(key: string, entry: _CacheStoreEntry): void;
 
-  getProvenance(key: string): undefined | "ssr" | "csr";
-  setProvenance(key: string, provenance: "ssr" | "csr"): void;
   del(key: string): void;
-  delAll(options: { provenance: "ssr" | "csr" | "all" }): void;
+  delAll(filter?: (entry: _CacheStoreEntry) => boolean): void;
   isEmpty(): boolean;
   keys(): string[];
-  getJSON(): unknown;
-  setJSON(json: unknown): void;
   dontStore(): boolean;
 };
 
 /**
  * @internal
- * Do not use - only exported for testing
+ *
+ * Be careful when changing this class, existing caches
+ * need to be handled correctly
  */
-export type _StoreItem = {
+type EntryMetaData = {
+  origRender: "ssr" | "csr";
+  lastRender: "ssr" | "csr";
+  suppressBeaconCount: number;
+};
+
+/**
+ * @internal
+ * Do not use - only exported for testing
+ *
+ * Be careful when changing this class, existing caches
+ * need to be handled correctly
+ */
+export type _CacheStoreEntry = {
   created: string;
   expires: string;
   identity: string;
-  provenance: "ssr" | "csr";
   value: unknown;
-};
+} & Partial<EntryMetaData>;
+
+type CacheEntry = {
+  created: Date;
+  expires: Date;
+  identity: string;
+  value: unknown;
+} & Partial<EntryMetaData>;
+
+type CacheInputEntry = {
+  created?: Date;
+  expires: Date;
+  identity: string;
+  value: unknown;
+} & Partial<EntryMetaData>;
 
 class LocalStorageStore implements _BackingStore {
   static prefix = "_causal_";
@@ -1091,41 +1035,13 @@ class LocalStorageStore implements _BackingStore {
     return LocalStorageStore.prefix + key;
   }
 
-  get(
-    key: string,
-    autoPrefix = true
-  ):
-    | undefined
-    | {
-        identity: string;
-        value: unknown;
-        created: Date;
-        expires: Date;
-        provenance: "csr" | "ssr";
-      } {
+  get(key: string, autoPrefix = true): undefined | _CacheStoreEntry {
     const _key = autoPrefix ? LocalStorageStore.makeKey(key) : key;
     const raw = window.localStorage.getItem(_key);
     if (!raw) return undefined;
     try {
-      const { identity, value, created, expires, provenance }: _StoreItem =
-        JSON.parse(raw);
-
-      const now = new Date();
-      const createdTS = new Date(created);
-      const expiresTS = new Date(expires);
-
-      if (expiresTS < now) {
-        window.localStorage.removeItem(_key);
-        return undefined;
-      }
-
-      return {
-        identity,
-        value,
-        created: createdTS,
-        expires: expiresTS,
-        provenance,
-      };
+      const storeEntry: _CacheStoreEntry = JSON.parse(raw);
+      return storeEntry;
     } catch (e) {
       log.warn(
         "failed to deserialize from cache. Error = " + JSON.stringify(e)
@@ -1135,47 +1051,9 @@ class LocalStorageStore implements _BackingStore {
     }
   }
 
-  set({
-    key,
-    identity,
-    value,
-    expires,
-    created,
-    provenance,
-  }: {
-    key: string;
-    identity: string;
-    value: unknown;
-    expires: Date;
-    created?: Date;
-    provenance?: "ssr" | "csr";
-  }) {
+  set(key: string, storeEntry: _CacheStoreEntry) {
     const _key = LocalStorageStore.makeKey(key);
-    const createdString = (created ?? new Date()).toISOString();
-    const expiresString = expires.toISOString();
-    const toStore: _StoreItem = {
-      created: createdString,
-      expires: expiresString,
-      identity,
-      value,
-      provenance: provenance ?? (misc.ssr ? "ssr" : "csr"),
-    };
-    return window.localStorage.setItem(_key, JSON.stringify(toStore));
-  }
-
-  getProvenance(key: string): "ssr" | "csr" | undefined {
-    const item = this.get(key);
-    if (item == undefined) return undefined;
-    return item.provenance;
-  }
-
-  setProvenance(key: string, provenance: "ssr" | "csr") {
-    const item = this.get(key);
-    if (item == undefined) {
-    } else {
-      item.provenance = provenance;
-      this.set({ key, ...item });
-    }
+    return window.localStorage.setItem(_key, JSON.stringify(storeEntry));
   }
 
   del(key: string) {
@@ -1183,15 +1061,15 @@ class LocalStorageStore implements _BackingStore {
     window.localStorage.removeItem(_key);
   }
 
-  delAll({ provenance }: { provenance: "all" | "ssr" | "csr" }): void {
+  delAll(filter?: (entry: _CacheStoreEntry) => boolean): void {
     for (let ii = localStorage.length - 1; ii >= 0; --ii) {
       const key = localStorage.key(ii);
       if (
         key?.startsWith(LocalStorageStore.prefix) &&
         key != _causal_registered
       ) {
-        const item = this.get(key, false);
-        if (provenance == "all" || item?.provenance == provenance)
+        const entry = this.get(key, false);
+        if (filter == undefined || entry == undefined || filter(entry))
           localStorage.removeItem(key);
       }
     }
@@ -1218,14 +1096,6 @@ class LocalStorageStore implements _BackingStore {
     return _keys;
   }
 
-  getJSON(): unknown {
-    return undefined;
-  }
-
-  setJSON(): void {
-    undefined;
-  }
-
   dontStore() {
     return false;
   }
@@ -1236,14 +1106,6 @@ class NoOpStore implements _BackingStore {
     return undefined;
   }
   set() {
-    undefined;
-  }
-
-  getProvenance(): "ssr" | "csr" | undefined {
-    return undefined;
-  }
-
-  setProvenance() {
     undefined;
   }
 
@@ -1263,20 +1125,15 @@ class NoOpStore implements _BackingStore {
     return [];
   }
 
-  getJSON(): unknown {
-    return undefined;
-  }
-
-  setJSON(): void {
-    undefined;
-  }
-
   dontStore() {
     return true;
   }
 }
 
-type CacheOptions = {
+/**
+ * @internal
+ */
+export type CacheOptions = {
   /**
    * The maximum amount of time to cache feature values.
    * The default is to cache for the same duration as a session
@@ -1305,18 +1162,22 @@ type CacheOptions = {
    * The default ssr cache type to use if none is specified.
    * This defaults to "inMemory"
    */
-  ssrCacheType?: SessionJSON["ssr"]["cacheType"];
+  ssrCacheType?: "none" | "inMemory" | "custom";
 
   /**
    * The default csr cache type to use if none is specified.
    * This defaults to "localStorage"
    */
-  csrCacheType?: SessionJSON["csr"]["cacheType"];
+  csrCacheType?: CacheType;
+
+  /**
+   * If the cache type is "custom" or "customLocalStorage", a function that returns a custom backing store
+   */
+  makeCustomStore?: () => _BackingStore;
 };
 
-type OutputMetadata = Map<string, { provenance: "ssr" | "csr" }>;
-
 const _cacheInfo = "_cacheInfo";
+const _cacheVersion = "_cacheVersion";
 const _causal_registered = "_causal_registered";
 
 type CacheInfo = {
@@ -1387,10 +1248,73 @@ export class _Cache {
     }
   }
 
+  get(key: string): Required<CacheEntry> | undefined {
+    const storeEntry = this.backingStore.get(key);
+    if (storeEntry == undefined) return;
+
+    const {
+      identity,
+      value,
+      created,
+      expires,
+      origRender: _origRender,
+      lastRender: _lastRender,
+      suppressBeaconCount: _suppressBeaconCount,
+    }: _CacheStoreEntry = storeEntry;
+    const now = new Date();
+    const createdTS = new Date(created);
+    const expiresTS = new Date(expires);
+
+    const origRender = _origRender ?? misc.ssr ? "ssr" : "csr";
+    const lastRender = _lastRender ?? origRender;
+    const suppressBeaconCount = _suppressBeaconCount ?? 0;
+
+    if (expiresTS < now) {
+      this.backingStore.del(key);
+      return undefined;
+    }
+    return {
+      identity,
+      value,
+      created: createdTS,
+      expires: expiresTS,
+      origRender,
+      lastRender,
+      suppressBeaconCount,
+    };
+  }
+
+  set(
+    key: string,
+    {
+      expires,
+      created,
+      origRender,
+      lastRender,
+      suppressBeaconCount,
+      ...rest
+    }: CacheInputEntry
+  ) {
+    const createdString = (created ?? new Date()).toISOString();
+    const expiresString = expires.toISOString();
+    origRender = origRender ?? (misc.ssr ? "ssr" : "csr");
+    lastRender = lastRender ?? origRender;
+    suppressBeaconCount = suppressBeaconCount ?? 0;
+    const toStore: Required<_CacheStoreEntry> = {
+      ...rest,
+      created: createdString,
+      expires: expiresString,
+      origRender,
+      lastRender,
+      suppressBeaconCount,
+    };
+    return this.backingStore.set(key, toStore);
+  }
+
   deleteAll(invalidateHooks: boolean): void {
     if (this.sessionArgs == undefined) return;
 
-    this.backingStore.delAll({ provenance: "all" });
+    this.backingStore.delAll();
 
     // forces react hooks to re-execute next time they are used
     if (invalidateHooks) _flushCount += 1;
@@ -1403,9 +1327,7 @@ export class _Cache {
     log.debug(5, "testAndTouchSession");
     if (this.backingStore.dontStore()) return false;
 
-    const oldCacheInfo = this.backingStore.get(_cacheInfo)?.value as
-      | CacheInfo
-      | undefined;
+    const oldCacheInfo = this.get(_cacheInfo)?.value as CacheInfo | undefined;
 
     const now = new Date();
     let cacheExpired = false;
@@ -1446,8 +1368,7 @@ export class _Cache {
       sessionArgs: this.sessionArgs,
     };
 
-    this.backingStore.set({
-      key: _cacheInfo,
+    this.set(_cacheInfo, {
       identity: "",
       value: newCacheInfo,
       expires: maxDate,
@@ -1483,7 +1404,7 @@ export class _Cache {
   flags(): Flags<FeatureNames> | undefined {
     if (!this.testAndTouchSession()) return undefined;
 
-    const store = this.backingStore.get("_flags");
+    const store = this.get("_flags");
     if (store == undefined) return undefined;
 
     const { value } = store;
@@ -1492,8 +1413,7 @@ export class _Cache {
 
   setFlags(flags: Flags<FeatureNames>) {
     if (!this.testAndTouchSession()) return;
-    this.backingStore.set({
-      key: "_flags",
+    this.set("_flags", {
       identity: "",
       value: flags,
       expires: maxDate,
@@ -1521,17 +1441,17 @@ export class _Cache {
   outputs(wireArgs: _WireArgs):
     | {
         wireOutputs: _WireOutputs;
-        metadata: OutputMetadata;
+        metadata: Map<string, EntryMetaData>;
       }
     | undefined {
     if (!this.testAndTouchSession()) return undefined;
 
     const outputs: _WireOutputs = {};
-    const metadata: OutputMetadata = new Map();
+    const metadata: Map<string, EntryMetaData> = new Map();
 
     let allCached = true;
 
-    const sessionOutput = this.backingStore.get("session");
+    const sessionOutput = this.get("session");
     if (sessionOutput == undefined) {
       allCached = false;
       this.addCacheMiss("session");
@@ -1542,7 +1462,7 @@ export class _Cache {
       for (const k of Object.keys(wireArgs) as (keyof _WireArgs)[]) {
         const featureName: FeatureNames = k;
 
-        const output = this.backingStore.get(k);
+        const output = this.get(k);
         if (output == undefined) {
           allCached = false;
           this.addCacheMiss(k);
@@ -1559,7 +1479,12 @@ export class _Cache {
         try {
           // eslint-disable-next-line
           (outputs as any)[k] = output.value;
-          metadata.set(k, { provenance: output.provenance });
+          const origRender = output.origRender ?? (misc.ssr ? "ssr" : "csr");
+          metadata.set(k, {
+            origRender,
+            lastRender: output.lastRender ?? origRender,
+            suppressBeaconCount: output.suppressBeaconCount ?? 0,
+          });
 
           this.addCacheHit(k);
         } catch {
@@ -1585,8 +1510,7 @@ export class _Cache {
     ][]) {
       if (k == "session") {
         const sessionIdentity = JSON.stringify(this.sessionArgs);
-        this.backingStore.set({
-          key: k,
+        this.set(k, {
           identity: sessionIdentity,
           value: v,
           expires: nextExpiry,
@@ -1596,8 +1520,7 @@ export class _Cache {
         if (wireArg != undefined) {
           const identity = this.getOutputIdentity(k, wireArg);
           if (identity != undefined && !(k as string).startsWith("_"))
-            this.backingStore.set({
-              key: k,
+            this.set(k, {
               identity,
               value: v,
               expires: nextExpiry,
@@ -1618,7 +1541,7 @@ export class _Cache {
 
     try {
       const createdBefore = new Date(createdBeforeDate);
-      const cur = this.backingStore.get(name);
+      const cur = this.get(name);
       if (cur == undefined) return;
       if (cur.created < createdBefore) this.backingStore.del(name);
     } catch (e) {
@@ -1640,8 +1563,7 @@ export class _Cache {
     if (mevt.data == "_all") this.deleteAll(false);
     // hooks already invalidated
     else this.sseMaybeDel(mevt.data, null);
-    this.backingStore.set({
-      key: "_cacheVersion",
+    this.set(_cacheVersion, {
       identity: "",
       value: "0",
       expires: maxDate,
@@ -1656,8 +1578,7 @@ export class _Cache {
     const mevt: MessageEvent = evt as MessageEvent;
     _flushCount++;
     this.deleteAll(false);
-    this.backingStore.set({
-      key: "_cacheVersion",
+    this.set(_cacheVersion, {
       identity: "",
       value: mevt.data,
       expires: maxDate,
@@ -1677,44 +1598,21 @@ export class _Cache {
   sseHello(evt: Event) {
     if (this.backingStore.dontStore()) return;
     const mevt: MessageEvent = evt as MessageEvent;
-    const cacheVersion = this.backingStore.get("_cacheVersion");
+    const cacheVersion = this.get("_cacheVersion");
     if (cacheVersion != undefined && mevt.data != cacheVersion.value)
       this.deleteAll(true);
-    this.backingStore.set({
-      key: "_cacheVersion",
+    this.set(_cacheVersion, {
       identity: "",
       value: mevt.data,
       expires: maxDate,
     });
   }
 
-  /** updates impression cache outputs to CSR */
-  updateProvenance<T extends FeatureNames>(impression: Impression<T>) {
-    // never set to csr server side
-    if (misc.ssr) return;
-
-    const outputs = impression._.json.wireOutputs;
-
-    Object.keys(outputs).forEach((k) => {
-      if (k != "session" && this.backingStore.getProvenance(k) == "ssr") {
-        this.backingStore.setProvenance(k, "csr");
-      }
-    });
-  }
-
-  static transferTo(fromStore: _BackingStore, toStore: _BackingStore) {
-    for (const k of fromStore.keys()) {
-      const result = fromStore.get(k);
-      if (result) {
-        const { created, expires, identity, value, provenance } = result;
-        toStore.set({
-          key: k,
-          identity: identity,
-          value,
-          expires,
-          created,
-          provenance,
-        });
+  updateFromMetadata(metadata: Map<string, EntryMetaData>) {
+    for (const [k, v] of metadata.entries()) {
+      const elem = this.get(k);
+      if (elem) {
+        this.set(k, { ...elem, ...v });
       }
     }
   }
@@ -1805,7 +1703,35 @@ export type _FetchResponse = {
 };
 
 /**
- * Causal configuration options.
+ * This represents an active experiment variant within Causal.
+ *
+ * Active variants are available on the [[Session.activeVariants]]
+ *
+ * Active experiments variants can also be reported to you by setting
+ * the `reporter` property when calling [[initCausal]]
+ */
+export type ActiveVariant = {
+  /** the id of the experiment */
+  experimentId: string;
+
+  /** the name of the experiment */
+  experimentName: string;
+
+  /** the name of the variant, undefined for control */
+  variantId: string | undefined;
+
+  /** the name of the variant */
+  variantName: string;
+};
+
+/**
+ * A function that wil get called with various reporting information
+ * such as all the active experiment/variants in effect
+ */
+export type ReportFn = (data: { variants: ActiveVariant[] }) => void;
+
+/**
+ * Causal configuration options that can be passed to [[initCausal]]
  */
 export type CausalOptions = {
   /**
@@ -1827,6 +1753,12 @@ export type CausalOptions = {
    * The default is 1000 ms (1 second)
    */
   timeoutMs?: number;
+
+  /**
+   * A function that wil get called with various reporting information
+   * such as all the active experiment/variants in effect
+   */
+  reporter?: ReportFn;
 
   /**
    * What should be logged
@@ -1926,11 +1858,18 @@ export function _getLog() {
   return log;
 }
 
+type MiscOptions = Required<
+  Pick<CausalOptions, "reporter"> & Pick<CausalDebugOptions, "ssr">
+>;
+
 const defaultSSR = typeof window == "undefined";
-const defaultMisc = {
+const defaultMisc: MiscOptions = {
   ssr: defaultSSR,
+  reporter: () => {
+    // noop by default
+  },
 };
-const misc = { ...defaultMisc };
+const misc: MiscOptions = { ...defaultMisc };
 
 const defaultCacheOptions: Required<CacheOptions> = {
   outputExpirySeconds: 60 * 60 * 24 * 365 * 100, // 100 years (so will expire with the session)
@@ -1941,6 +1880,10 @@ const defaultCacheOptions: Required<CacheOptions> = {
   sessionCacheExpirySeconds: 60 * 30,
   ssrCacheType: "inMemory",
   csrCacheType: "localStorage",
+  makeCustomStore: () => {
+    log.warn("no custom store function");
+    return new NoOpStore();
+  },
 };
 let cacheOptions = { ...defaultCacheOptions };
 
@@ -1996,6 +1939,7 @@ export function initCausal(
 ) {
   let baseUrl = options?.baseUrl ? normalizeUrl(options?.baseUrl) : undefined;
   misc.ssr = debugOptions?.ssr ?? defaultSSR;
+  misc.reporter = options?.reporter ?? defaultMisc.reporter;
 
   log = { ...defaultLog };
   log.info = debugOptions?.logInfo ?? defaultLog.info;
@@ -2062,6 +2006,9 @@ export function initCausal(
     csrCacheType:
       debugOptions?.cacheOptions?.csrCacheType ??
       defaultCacheOptions.csrCacheType,
+    makeCustomStore:
+      debugOptions?.cacheOptions?.makeCustomStore ??
+      defaultCacheOptions.makeCustomStore,
   };
 }
 
@@ -2152,6 +2099,20 @@ export function toImpression<T extends FeatureNames>({
  */
 export type IServerResponse = _WireOutputs & {
   _flags: _WireFlags;
+  _variants?: {
+    /** the id of the experiment */
+    id: string;
+    /** the name of the experiment */
+    name: string;
+
+    /** the variant, null if control */
+    variant: null | {
+      /** the id of the variant */
+      id: string;
+      /** the name of the variant */
+      name: string;
+    };
+  }[];
   errors?: Partial<Record<FeatureNames, string>>;
 };
 
@@ -2196,6 +2157,7 @@ async function iserverFetch({
   impression?: ImpressionImpl;
   flags?: Flags<FeatureNames>;
   error?: ErrorTypes;
+  activeVariants?: ActiveVariant[];
 }> {
   const fetchOptions = [...options];
   try {
@@ -2293,7 +2255,12 @@ async function iserverFetch({
       };
     }
 
-    const { _flags: responseFlags, errors, ...wireOutputs } = response;
+    const {
+      _flags: responseFlags,
+      errors,
+      _variants,
+      ...wireOutputs
+    } = response;
 
     log.debug(4, "fetch outputs:", wireOutputs);
 
@@ -2319,10 +2286,24 @@ async function iserverFetch({
       };
     }
 
+    const activeVariants: ActiveVariant[] = (_variants ?? []).map((v) => {
+      return {
+        experimentId: v.id,
+        experimentName: v.name,
+        variantId: v.variant?.id ?? undefined,
+        variantName: v.variant?.name ?? "control",
+      };
+    });
+
+    misc.reporter({
+      variants: activeVariants,
+    });
+
     return {
       impression,
       flags: returnFlags,
       error,
+      activeVariants,
     };
   } catch (e) {
     const errMsg = "unexpected error in network.fetch";
@@ -2343,16 +2324,13 @@ async function iserverFetch({
 
 /**
  * Sends a beacon to the iserver to indicate an impression was viewed from cache
- * Will only send info for outputs with a CSR provenance
+ * Will send if suppressBeaconCount == 0, otherwise decrements suppressBeaconCount
  */
 function sendImpressionBeacon<T extends FeatureNames>(
   impression: Impression<T>,
   impressionId: string,
-  metadata: OutputMetadata
-) {
-  // never send beacons server side, it's always going to be the same impression
-  if (misc.ssr) return;
-
+  metadata: Map<string, EntryMetaData>
+): boolean {
   const outputs = impression.toJSON().wireOutputs;
   const impressionIdMap: {
     [idx: string]: { impression: string; newImpression: string | undefined };
@@ -2363,13 +2341,18 @@ function sendImpressionBeacon<T extends FeatureNames>(
     const v = _v as _WireOutputs[keyof Omit<_WireOutputs, "session">]; // TS not smart enough
 
     if (k != "session" && v != "OFF" && v != undefined) {
-      if (metadata.get(k)?.provenance == "csr") {
-        count += 1;
-        impressionIdMap[k] = {
-          impression: v?._impressionId,
-          newImpression: impressionId,
-        };
-      }
+      const entry = metadata.get(k);
+      if (entry) {
+        entry.lastRender = misc.ssr ? "ssr" : "csr";
+        const suppressCount = entry?.suppressBeaconCount ?? 0;
+        if (suppressCount == 0) {
+          count += 1;
+          impressionIdMap[k] = {
+            impression: v?._impressionId,
+            newImpression: impressionId,
+          };
+        } else entry.suppressBeaconCount = suppressCount - 1;
+      } else log.warn("entry is null, ignoring");
     }
   });
 
@@ -2379,19 +2362,20 @@ function sendImpressionBeacon<T extends FeatureNames>(
       impressions: impressionIdMap,
     });
   }
+
+  return count > 0;
 }
 
 function updateImpressionIds<T extends FeatureNames>(
   impression: Impression<T>,
   newImpressionId: string,
-  wireArgs: _WireArgs,
-  metadata: OutputMetadata
+  wireArgs: _WireArgs
 ): Impression<T> {
   const newOutputs: _WireOutputs = {};
   for (const k of Object.keys(wireArgs) as (keyof _WireArgs)[]) {
-    if (metadata.get(k)?.provenance == "ssr") continue;
-
     const currentOutput = impression.toJSON().wireOutputs[k];
+
+    // if the feature is off (or not there), don't update the impression ids
     if (currentOutput == "OFF" || currentOutput == undefined) {
       // Casting b/c it can be too much for TS to understand
       (newOutputs as { [idx: string]: unknown })[k] = currentOutput;
@@ -2557,11 +2541,11 @@ type ImpressionNone<T extends FeatureNames> = {
 };
 
 type ImpressionCached<T extends FeatureNames> = {
-  state: "loadingCached" | "cached";
+  state: "cached";
   newImpressionId: string;
   cachedImpression: Impression<T>;
   impression: Impression<T>;
-  metadata: OutputMetadata;
+  metadata: Map<string, EntryMetaData>;
 };
 
 type ImpressionLoading<T extends FeatureNames> = {
@@ -2704,49 +2688,17 @@ export function useImpression<T extends FeatureNames>(
       hasChange = true;
       const newImpressionId = impressionId ?? uuidv4();
 
-      // In order to have react hydration work w/o errors, the server side render and the client side render have to match exactly
-      // The logic we use is as follows:
-      //
-      // 1. During CSR, if we are transferring the SSR cache, we delete any other SSR cached entries.
-      //    These were unused from a different render
-      //
-      // 2. If all the cached outputs are SSR, then we render the impression immediately (both for SSR and CSR code)
-      //    This will always match on client and server b/c of step 1
-      //
-      // 3. If the cached outputs are mixed SSR and CSR, or the impression is not fully cached, then we delay the render one tick.
-      //    On the client side, we also then convert the SSR cache entries to CSR cache entries after we render
-      //    On server anything that was CSR cached will not exist, so the render will return a loading impression
-      //    On the client, by definition, render will return a loading impression (on the first tick)
-      //
-      // 4: For any SSR cached entries, never send a beacon, as it was already sent by the server.
-      //
-      // Also, note, as per above: In order to SSR with useImpression, all the features must be in the SSR cache
-
-      let allSSR = true;
-      for (const v of metadata.values()) {
-        if (v.provenance == "csr") {
-          allSSR = false;
-          break;
-        }
-      }
-
-      if (allSSR) {
-        impressionState.current = {
-          state: "cached",
-          newImpressionId,
-          impression: cachedImpression,
+      impressionState.current = {
+        state: "cached",
+        newImpressionId,
+        impression: updateImpressionIds(
           cachedImpression,
-          metadata,
-        };
-      } else {
-        impressionState.current = {
-          state: "loadingCached",
           newImpressionId,
-          impression: _loadingImpression.current,
-          cachedImpression,
-          metadata,
-        };
-      }
+          query._.wireArgs
+        ),
+        cachedImpression,
+        metadata,
+      };
     }
   }
 
@@ -2781,36 +2733,6 @@ export function useImpression<T extends FeatureNames>(
     }
   });
 
-  // make impression available on second tick
-  useEffect(() => {
-    log.debug(1, "useImpression useEffect: loadingCached");
-
-    async function delayCache() {
-      await new Promise((r) => setTimeout(r, 0));
-
-      if (impressionState.current.state == "loadingCached") {
-        const { cachedImpression, newImpressionId, metadata } =
-          impressionState.current;
-
-        impressionState.current = {
-          state: "cached",
-          newImpressionId,
-          impression: updateImpressionIds(
-            cachedImpression,
-            newImpressionId,
-            query._.wireArgs,
-            metadata
-          ),
-          cachedImpression,
-          metadata,
-        };
-        forceUpdate();
-      }
-    }
-
-    if (impressionState.current.state == "loadingCached") delayCache();
-  });
-
   // send beacons for cached impressions
   useEffect(() => {
     log.debug(1, "useImpression useEffect: cached");
@@ -2820,11 +2742,10 @@ export function useImpression<T extends FeatureNames>(
         impressionState.current.newImpressionId,
         impressionState.current.metadata
       );
-      const impression = impressionState.current.impression;
-      _session._.cache.updateProvenance(impression);
+      _session._.cache.updateFromMetadata(impressionState.current.metadata);
       impressionState.current = {
         state: "done",
-        impression,
+        impression: impressionState.current.impression,
       };
     }
   });
@@ -2832,17 +2753,15 @@ export function useImpression<T extends FeatureNames>(
   // return current values
   const loading =
     impressionState.current.state == "none" ||
-    impressionState.current.state == "loading" ||
-    impressionState.current.state == "loadingCached";
+    impressionState.current.state == "loading";
   log.debug(3, "useImpression returning. loading", loading);
 
   if (hasChange) forceUpdate();
 
-  const impression = impressionState.current.impression;
-  const flags = flagsFromImpression(impression);
+  const flags = flagsFromImpression(impressionState.current.impression);
   return {
     loading,
-    impression,
+    impression: impressionState.current.impression,
     flags,
     error: errorState.current,
   };
