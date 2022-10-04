@@ -1,6 +1,6 @@
 # Causal SSR Sample app
 
-This is a sample app showing the use of server side rendering with Casual, built on Next.js
+This is a sample app showing the use of server side rendering with Causal, built on Next.js
 
 To run the development server:
 

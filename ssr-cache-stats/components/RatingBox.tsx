@@ -1,8 +1,13 @@
+import { useContext } from "react";
 import { qb, useImpression } from "../causal";
+import { RequestIdContext } from "../utils";
 
 export default function RatingBox() {
+  const requestId = useContext(RequestIdContext);
+
   const { impression, loading } = useImpression(
-    qb().getRatingBox({ product: "abc" })
+    qb().getRatingBox({ product: "abc" }),
+    requestId
   );
   return (
     <div>

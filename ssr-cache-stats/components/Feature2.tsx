@@ -1,9 +1,12 @@
-import { ReactNode } from "react";
+import { ReactNode, useContext } from "react";
 import { qb, useImpression } from "../causal";
+import { RequestIdContext } from "../utils";
 
 export default function Feature2({ children }: { children: ReactNode }) {
+  const requestId = useContext(RequestIdContext);
   const { impression, loading } = useImpression(
-    qb().getFeature2({ exampleArg: "123" })
+    qb().getFeature2({ exampleArg: "123" }),
+    requestId
   );
   return (
     <div>
