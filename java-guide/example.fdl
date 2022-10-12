@@ -20,10 +20,20 @@ feature Simple
     args {
         simpleInput : Int!
     }
+    plugin java "SimplePlugin" {}
     output {
         simpleOutput : Int! = 42 @external( values: ["BigNumber", "SmallNumber"] )
     }
     event Click {
         clickValue : Int!
+        plugin java "SimpleClickPlugin" {}
+    }
+}
+
+feature SimpleGeneric
+{
+    plugin {
+        "This output can only be set by the Generic plugin methods"
+        anotherOutput : Int! = 0
     }
 }
