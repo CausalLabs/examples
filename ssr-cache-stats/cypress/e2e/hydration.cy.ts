@@ -12,7 +12,7 @@ describe("hydration success", () => {
     expect(spyWarn).not.to.be.called;
   });
 
-  it("passes", () => {
+  it("no react hydration errors", () => {
     cy.visit("http://localhost:8080");
 
     const links = [
@@ -41,6 +41,28 @@ describe("hydration success", () => {
       cy.get(`[data-test-id=${testId1}]`).click();
       cy.url().should("equal", url1);
     }
+  });
+
+  it("no client side loading impressions", () => {
+    cy.visit("http://localhost:8080");
+    cy.get("[data-test-id=loading-impressions]").contains(/^0 /);
+    cy.get("[data-test-id=cache-misses]").contains(/^0 /);
+
+    cy.get("[data-test-id=next-underfetch").click();
+    cy.wait(750);
+    cy.get("[data-test-id=loading-impressions]").contains(/^0 /);
+    cy.get("[data-test-id=cache-misses]").contains(/^0 /);
+
+    cy.visit("http://localhost:8080/underfetch");
+    cy.wait(750);
+    cy.get("[data-test-id=next-index").click();
+    cy.wait(750);
+    cy.get("[data-test-id=loading-impressions]").contains(/^0 /);
+    cy.get("[data-test-id=cache-misses]").contains(/^0 /);
+    cy.get("[data-test-id=next-underfetch").click();
+    cy.wait(750);
+    cy.get("[data-test-id=loading-impressions]").contains(/^0 /);
+    cy.get("[data-test-id=cache-misses]").contains(/^0 /);
   });
 });
 

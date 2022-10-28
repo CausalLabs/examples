@@ -1,4 +1,3 @@
-import { NextPageContext } from "next";
 import type { AppContext, AppInitialProps, AppProps } from "next/app";
 import App from "next/app";
 import { useRouter } from "next/router";
@@ -9,15 +8,104 @@ import {
   SessionContext,
   SessionJSON,
   useSession,
+  useSessionJSON,
 } from "../causal";
-import Feature2 from "../components/Feature2";
 import "../styles/globals.css";
-import { getOrMakeDeviceId, RequestIdContext } from "../utils";
+import { getOrMakeDeviceId, MyPageContext, RequestIdContext } from "../utils";
 
-type MyProps = { sessionJson: SessionJSON; requestId: string };
-type MyAppProps = AppProps & MyProps;
-type MyAppInitialProps = AppInitialProps & MyProps;
+type MyAppRenderProps = AppProps & {
+  sessionJson: SessionJSON;
+  requestId: string;
+};
+type MyAppInitialProps = AppInitialProps & {
+  sessionJson: SessionJSON;
+  requestId: string;
+};
 
+export default function MyApp({
+  Component,
+  pageProps,
+  sessionJson,
+  requestId,
+}: MyAppRenderProps) {
+  const session = useSessionJSON(sessionJson);
+
+  // This in not technically needed
+  // The stats are are not transferred with the session
+  // It is here for illustrative purposes
+  session.clearImpressionStats();
+
+  const result = (
+    <SessionContext.Provider value={session}>
+      <RequestIdContext.Provider value={requestId}>
+        <Component {...pageProps} />
+        {/***************************/}
+        {/* Log out the cache stats */}
+        <StatsLogger />
+      </RequestIdContext.Provider>
+    </SessionContext.Provider>
+  );
+
+  return result;
+}
+
+MyApp.getInitialProps = async (
+  context: AppContext
+): Promise<MyAppInitialProps> => {
+  const deviceId = getOrMakeDeviceId(context.ctx);
+
+  const session = Session.fromDeviceId(deviceId, context.ctx.req);
+  await session.requestCacheFill(qb().getFeature2({ exampleArg: "123" }));
+
+  // Add the session to the context so each page's getInitialProps can use it
+  const appProps = await App.getInitialProps({
+    ...context,
+    ctx: {
+      ...context.ctx,
+      session,
+    } as MyPageContext,
+  });
+
+  // In this example, we are using a new impressionId for every request
+  // In general, we recommend that you use explicit impression ids
+  // to control when impressions are registered.
+  //
+  // If you don't use explicit impression ids, impression lifecycles will be
+  // tied to react component lifecycles, which may, or may not, be what you want
+  const requestId = uuidv4();
+
+  // Add the sessionJson to the props, so it transfers to the render function.
+  // Note: this transfer can happen across network boundaries.
+  // For example during SSR, the following happens:
+  //   1. getInitialProps runs server side,
+  //   2. render happens server side (receiving the props) and generates html
+  //   3. the html is sent to the client and displayed
+  //   4. the props are transferred to the client for render (hydrate)
+  //
+  // (This is all just standard Next.js / React SSR mechanics)
+  const ret = {
+    ...appProps,
+    sessionJson: session.toJSON(),
+    requestId,
+  };
+  return ret;
+};
+
+/**
+ * Component that logs out cache stats.
+ *  This is for demonstration purposes.
+ *  Place this at the end of the render tree,
+ *  so it can log out the stats after everthing renders
+ *
+ * There are better places in code for "after everthing renders".
+ *  On the client, a useEffect hook on the app
+ *  On the server, after a ReactDOMServer render method, or similar,
+ *  depending on the framework you use.
+ *
+ * For a real use of this, you probably want to limit to a slice
+ *  of traffic, and push the data into a monitoring system,
+ *  as opposed to logging it to the console.
+ */
 function StatsLogger() {
   const session = useSession();
   const router = useRouter();
@@ -48,74 +136,3 @@ function StatsLogger() {
   }
   return null;
 }
-
-function MyApp({ Component, pageProps, sessionJson, requestId }: MyAppProps) {
-  const session = Session.fromJSON(sessionJson);
-  session.clearImpressionStats();
-
-  const result = (
-    <SessionContext.Provider value={session}>
-      <RequestIdContext.Provider value={requestId}>
-        <Feature2>
-          <Component {...pageProps} />
-        </Feature2>
-        <StatsLogger />
-      </RequestIdContext.Provider>
-    </SessionContext.Provider>
-  );
-
-  return result;
-}
-
-MyApp.getInitialProps = async (
-  context: AppContext
-): Promise<MyAppInitialProps> => {
-  const debugLog = (msg: string) => {
-    // console.log(msg);
-  };
-
-  debugLog("getInitialProps");
-
-  const deviceId = getOrMakeDeviceId(context.ctx);
-  debugLog(`deviceId = ${deviceId}`);
-
-  // In this example, we are using a new impressionId for every request
-  //
-  // In general, we recommend that you use explicit impression ids
-  // to control when impressions are registered.
-  //
-  // If you don't use explicit impression ids, impression lifecycles will be
-  // tied to react component lifecycles.
-  // This may, or may not be, what you want
-  //
-  // For example, in this example app, Feature2 would never get
-  // a new impression without explicit impression ids because
-  // it is never unmounted.
-  const requestId = uuidv4();
-  debugLog(`requestId = ${requestId}`);
-
-  const session = Session.fromDeviceId(deviceId, context.ctx.req);
-  await session.requestImpression(
-    qb().getFeature2({ exampleArg: "123" }),
-    requestId
-  );
-
-  const appProps = await App.getInitialProps({
-    ...context,
-    ctx: {
-      ...context.ctx,
-      session,
-    } as NextPageContext & {
-      session: Session;
-    },
-  });
-
-  const ret = {
-    ...appProps,
-    sessionJson: session.toJSON(),
-    requestId,
-  };
-  return ret;
-};
-
-export default MyApp;

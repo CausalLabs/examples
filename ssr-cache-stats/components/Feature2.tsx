@@ -2,7 +2,7 @@ import { ReactNode, useContext } from "react";
 import { qb, useImpression } from "../causal";
 import { RequestIdContext } from "../utils";
 
-export default function Feature2({ children }: { children: ReactNode }) {
+export default function Feature2() {
   const requestId = useContext(RequestIdContext);
   const { impression, loading } = useImpression(
     qb().getFeature2({ exampleArg: "123" }),
@@ -18,7 +18,6 @@ export default function Feature2({ children }: { children: ReactNode }) {
           ? "OFF"
           : "ON"}
       </div>
-      {children}
     </div>
   );
 }
