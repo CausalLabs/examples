@@ -1,5 +1,11 @@
 import { GetServerSidePropsContext } from "next";
-import { qb, Session, SessionContext, SessionJSON } from "../causal";
+import {
+  qb,
+  Session,
+  SessionContext,
+  SessionJSON,
+  useSessionJSON,
+} from "../causal";
 import { getOrGenDeviceId, products } from "../utils";
 import { ProductInfo } from "./react-example";
 
@@ -11,13 +17,13 @@ export async function getServerSideProps(
 
   const deviceId = getOrGenDeviceId(context);
   const session = Session.fromDeviceId(deviceId, context.req);
-  await session.requestImpression(qb().getRatingBox({ product: product.name }));
+  await session.requestCacheFill(qb().getRatingBox({ product: product.name }));
 
   return { props: { sessionJson: session.toJSON(), product } };
 }
 
 export default function Index(props: PageProps) {
-  const session = Session.fromJSON(props.sessionJson);
+  const session = useSessionJSON(props.sessionJson);
 
   return (
     <SessionContext.Provider value={session}>
