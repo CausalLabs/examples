@@ -20,7 +20,11 @@ feature Simple
     args {
         simpleInput : Int!
     }
-    plugin java "SimplePlugin" {}
+    plugin java "SimplePlugin" {
+        """This value is set by the io.causallabs.example.SimplePlugin class. 
+        If the class doesn't fill in the value, the default of '0' will be used. """
+        simplePluginOutput : Int! = 0
+    }
     output {
         simpleOutput : Int! = 42 @external( values: ["BigNumber", "SmallNumber"] )
     }

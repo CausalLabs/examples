@@ -17,8 +17,8 @@ repositories {
 
 dependencies
 {
-    implementation 'io.causallabs:runtime:0.24.0'
-    iserver 'io.causallabs:iserver:0.24.0'
+    implementation 'io.causallabs:runtime:0.25.0'
+    iserver 'io.causallabs:iserver:0.25.0'
     testImplementation'org.testng:testng:7.4.0'
 }
 
@@ -27,8 +27,8 @@ dependencies
 // you can install the causal compiler using:
 //    npm install --global @causal/compiler@latest
 task generateFdlSource(type: Exec) {
-    commandLine 'causalc', '--java', 'build/generated/fdl', 'example.fdl'
-    // commandLine '../../../compiler/build/install/compiler/bin/compiler', '--java', 'build/generated/fdl', 'example.fdl'
+    // commandLine 'causalc', '--java', 'build/generated/fdl', 'example.fdl'
+    commandLine '../../../compiler/build/install/compiler/bin/compiler', '--java', 'build/generated/fdl', 'example.fdl'
 }
 compileJava.dependsOn(generateFdlSource)
 
