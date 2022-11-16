@@ -10,7 +10,7 @@ public class SessionPlugin implements SessionPluginBase {
     }
 
     @Override
-    public void eval(Session session) throws Exception {
+    public void fill(Session session) throws Exception {
         String visitorId = session.getVisitorId();
         // look up a bunch of stuff here
         session.setUserZipCode("02445");
@@ -23,20 +23,32 @@ public class SessionPlugin implements SessionPluginBase {
     }
 
     @Override
-    public void newImpression(Session session, Object impression) {
+    public void fill(Session session, Object impression) {
         if (impression instanceof Simple) {
             Simple simple = (Simple) impression;
-            System.out.println("Simple impression with input: " + simple.getSimpleInput());
+            // use the eval method to populate the plugin output values
+            simple.setSimplePluginOutput(simple.getSimpleInput() + 1);
         }
     }
 
     @Override
-    public void newEvent(Session session, Object impression, Object event) {
+    public void onImpression(Session session, Object impression) throws Exception {
+        if (impression instanceof Simple) {
+            Simple simple = (Simple) impression;
+            // use the register method to tell other data systems that an impression has occured
+            // all values are available because you are guaranteed that eval has previously been
+            // called
+            System.out.println("Simple impression input:" + simple.getSimpleInput() + " plugin:"
+                    + simple.getSimplePluginOutput() + " output:" + simple.getSimpleOutput());
+        }
+    }
+
+    @Override
+    public void onEvent(Session session, Object impression, Object event) {
         if (event instanceof Simple.Click) {
             Simple.Click click = (Simple.Click) event;
             System.out.println("Simple click with value: " + click.getClickValue());
         }
-        SessionPluginBase.super.newEvent(session, impression, event);
     }
 
 }

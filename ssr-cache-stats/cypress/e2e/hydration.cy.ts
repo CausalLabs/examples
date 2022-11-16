@@ -1,3 +1,5 @@
+import "cypress-localstorage-commands";
+
 describe("hydration success", () => {
   let spyError: ReturnType<Cypress.Chainable["spy"]>;
   let spyWarn: ReturnType<Cypress.Chainable["spy"]>;
@@ -66,4 +68,24 @@ describe("hydration success", () => {
   });
 });
 
-export {};
+describe("test disabled local storage", () => {
+  let spyError: ReturnType<Cypress.Chainable["spy"]>;
+  let spyWarn: ReturnType<Cypress.Chainable["spy"]>;
+
+  beforeEach(() => {
+    spyError = cy.spy(window.console, "error");
+    spyWarn = cy.spy(window.console, "warn");
+    cy.disableLocalStorage();
+  });
+
+  afterEach(() => {
+    expect(spyError).not.to.be.called;
+    expect(spyWarn).not.to.be.called;
+  });
+
+  it("no errors", () => {
+    cy.visit("http://localhost:8080");
+    cy.visit("http://localhost:8080/overfetch");
+    cy.visit("http://localhost:8080/underfetch");
+  });
+});

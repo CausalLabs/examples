@@ -467,10 +467,6 @@ export class Session {
     // this track the number of times useImpression() returned with loading == true
     // it's used a part of testing, to ensure we are not doing this incorrectly
     loadingImpressionsCount: number;
-
-    // the features (with their args) requested since this session object was constructed
-    // each set entry is in the form of featureName.${JSON.stringify(args)}
-    requestedFeatures: Set<string>;
   };
 
   constructor(args: SessionArgs, req?: IncomingMessage) {
@@ -484,7 +480,6 @@ export class Session {
       args,
       cache: _cache,
       implicitArgs: {},
-      requestedFeatures: new Set(),
       activeVariants: [],
       originator: misc.ssr ? "ssr" : "csr",
       hydrating: false,
@@ -495,6 +490,21 @@ export class Session {
     if (req) this.addIncomingMessageArgs(req);
     this._.cache.testAndTouchSession();
   }
+
+
+  /**
+   * Mark the session as still active
+   */
+  keepAlive() : boolean {
+    // rate limit the keep alives to no more than 1 per second
+    if ((Date.now() - Session.lastKeepAlive) > 1000) {
+        Session.lastKeepAlive = Date.now();
+        network.sendBeacon({ id: this._.args });
+        return true;
+    }
+    return false;
+  }
+  static lastKeepAlive : number = 0
 
   /**
    * The currently active experiment variants
@@ -516,8 +526,11 @@ export class Session {
     })[] = [];
     for (const key of this._.cache.backingStore.keys()) {
       if (key.startsWith(nonFeaturePrefix)) {
-        const value = this._.cache.backingStore.get(key) as string;
-        cacheJson[key.substring(nonFeaturePrefix.length)] = value;
+        const noPrefixKey = key.substring(nonFeaturePrefix.length);
+        if (noPrefixKey != cacheInfoKey) {
+          const value = this._.cache.backingStore.get(key) as string;
+          cacheJson[noPrefixKey] = value;
+        }
       } else {
         const featureName = key;
         const featureEntry = this._.cache.backingStore.get(featureName) as
@@ -580,6 +593,7 @@ export class Session {
 
     // if the session args are different,
     // creating the session will (correctly) clear the cache
+    // it will also expire the cache if the cache is too old
     const session = new Session(json.sessionArgs as SessionArgs);
     session._.activeVariants = json.activeVariants;
     session._.originator = json.originator;
@@ -811,15 +825,6 @@ async function requestImpression<T extends FeatureNames>(
 }> {
   const cache = session._.cache;
 
-  // put all requested features into cache
-  // if we do a cache transfer, we will make hydratable those that
-  // have an impression count > 0
-  Object.entries(query._.wireArgs).forEach(([featureName, args]) => {
-    const argsKey = getArgsAsKey(args);
-    const key = `${featureName}.${argsKey}`;
-    session._.requestedFeatures.add(key);
-  });
-
   const { cachedImpression, cachedFlags } = getCachedImpression<T>(
     session,
     query._.wireArgs
@@ -858,8 +863,6 @@ async function requestImpression<T extends FeatureNames>(
   if (flags) cache.setFlags(flags);
 
   if (activeVariants) session._.activeVariants = activeVariants;
-
-  // TODO: save the feature -> active variant mapping
 
   if (impression) {
     cache.setOutputs(
@@ -911,7 +914,6 @@ export function useSessionJSON(json: SessionJSON): Session {
 
   return sessionRef.current as Session;
 }
-
 function makeBackingStore(
   cacheType: CacheType,
   makeCustomStore?: () => _BackingStore
@@ -921,23 +923,47 @@ function makeBackingStore(
       return new NoOpStore();
     case "inMemory":
       return new _InMemoryStore();
+  }
+
+  let backingStore: _BackingStore | undefined = undefined;
+  switch (cacheType) {
     case "localStorage":
-      return new LocalStorageStore();
+      backingStore = new LocalStorageStore();
+      break;
     case "custom":
     case "customLocalStorage":
-      return (
+      backingStore = (
         makeCustomStore ??
         (() => {
           log.warn("no makeCustomStore");
           return new NoOpStore();
         })
       )();
+      break;
     default:
       log.error("unknown cache type");
       const _: never = cacheType;
       _;
-      return new NoOpStore();
+      backingStore = new NoOpStore();
   }
+
+  if (backingStore.dontStore()) return backingStore;
+
+  const testKey = "_causal_storage_test";
+  const testVal = "tests if storage works";
+  let storageWorks = false;
+  try {
+    backingStore.set(testKey, testVal);
+    const val = backingStore.get(testKey);
+    backingStore.del(testKey);
+    if (val == testVal) storageWorks = true;
+  } catch {}
+
+  if (storageWorks) return backingStore;
+  log.warn(
+    `The requested storage "${cacheType}" did not work. Falling back to in-memory store`
+  );
+  return new _InMemoryStore();
 }
 
 function sessionArgsMatch(
@@ -1550,20 +1576,35 @@ export class _Cache {
     const now = new Date();
     let cacheExpired = false;
 
+    let invalidExpires = false;
     if (oldCacheInfo) {
-      const expires = addSeconds(
-        new Date(oldCacheInfo.lastAccess),
-        this.sessionCacheExpirySeconds
-      );
+      try {
+        const expires = addSeconds(
+          new Date(oldCacheInfo.lastAccess),
+          this.sessionCacheExpirySeconds
+        );
 
-      const invalid = isNaN(expires.valueOf());
+        invalidExpires = isNaN(expires.valueOf());
 
-      if (oldCacheInfo.version < cacheVersion || expires < now || invalid) {
+        if (
+          oldCacheInfo.version == undefined ||
+          oldCacheInfo.version < cacheVersion ||
+          expires < now ||
+          invalidExpires
+        ) {
+          cacheExpired = true;
+        }
+      } catch {
+        cacheExpired = true;
+        invalidExpires = true;
+      }
+
+      if (cacheExpired) {
         log.debug(1, "session expired");
         cacheExpired = true;
 
         // should never happen, but be extra cautious to avoid render loop
-        const invalidateHooks = !invalid;
+        const invalidateHooks = !invalidExpires;
         this.deleteAll(invalidateHooks);
       }
     }
@@ -1941,6 +1982,14 @@ export type CausalOptions = {
    * To suppress all logging pass in an empty array
    */
   logLevel?: ("info" | "warn" | "error")[];
+
+  /**
+   * If true, log to console.info() all the request and response information to/from the iserver
+   * This is useful for diagnostics, and generally should NOT be set
+   *
+   * The default is false
+   */
+  logIServerDetails?: boolean;
 };
 
 /**
@@ -2010,10 +2059,10 @@ const defaultLog: {
     console.log(...args);
   },
   warn: (...args) => {
-    console.error(...args);
+    console.warn(...args);
   },
   error: (...args) => {
-    console.warn(...args);
+    console.error(...args);
   },
   debug(level: number, message: string, ...optionalParams: unknown[]) {
     if (level <= debugLogLevel) console.log(message, ...optionalParams);
@@ -2032,23 +2081,28 @@ export function _getLog() {
   return log;
 }
 
-type MiscOptions = Required<Pick<CausalDebugOptions, "ssr">>;
+type MiscOptions = Required<Pick<CausalDebugOptions, "ssr">> &
+  Required<Pick<CausalOptions, "logIServerDetails">>;
 
-const defaultSSR =
-  typeof window == "undefined" ||
-  window.localStorage == undefined ||
-  typeof localStorage == "undefined";
+const defaultSSR = typeof window == "undefined";
 
 const defaultMisc: MiscOptions = {
   ssr: defaultSSR,
+  logIServerDetails: false,
 };
 const misc: MiscOptions = { ...defaultMisc };
 
+function isCausalRegistered() {
+  try {
+    return window.localStorage?.getItem(causalRegisteredKey) == "true" ?? false;
+  } catch {
+    return false;
+  }
+}
+
 const defaultCacheOptions: Required<CacheOptions> = {
   outputExpirySeconds: 60 * 60 * 24 * 365 * 100, // 100 years (so will expire with the session)
-  useServerSentEvents: defaultSSR
-    ? false
-    : window.localStorage?.getItem(causalRegisteredKey) == "true" ?? false,
+  useServerSentEvents: defaultSSR ? false : isCausalRegistered(),
   sessionCacheExpirySeconds: 60 * 30,
   ssrCacheType: "inMemory",
   csrCacheType: "localStorage",
@@ -2111,6 +2165,7 @@ export function initCausal(
 ) {
   let baseUrl = options?.baseUrl ? normalizeUrl(options?.baseUrl) : undefined;
   misc.ssr = debugOptions?.ssr ?? defaultSSR;
+  misc.logIServerDetails = options?.logIServerDetails ?? false;
 
   log = { ...defaultLog };
   log.info = debugOptions?.logInfo ?? defaultLog.info;
@@ -2340,6 +2395,8 @@ async function iserverFetch({
   activeVariants?: ActiveVariant[];
 }> {
   const fetchOptions = [...options];
+
+  if (misc.logIServerDetails) log.info("iserver fetch START ------");
   try {
     if (
       misc.ssr &&
@@ -2374,12 +2431,24 @@ async function iserverFetch({
 
       const headers = getCausalHeaders(sessionArgs);
 
-      result = await network.fetch(network.getBaseUrl() + "features", {
+      const url = network.getBaseUrl() + "features";
+      const payload: _FetchRequestInit = {
         method: "POST",
         body: JSON.stringify(body),
         headers,
-      });
+      };
+
+      if (misc.logIServerDetails) {
+        log.info("fetch from url:", url);
+        log.info("fetch with payload:", payload);
+      }
+
+      result = await network.fetch(url, payload);
+
+      if (misc.logIServerDetails) log.info("fetch fetch() result:", result);
     } catch (e) {
+      if (misc.logIServerDetails) log.info("fetch threw an exception:", e);
+
       if ((e as Error).message) fetchExceptionError = (e as Error).message;
       else fetchExceptionError = "Unknown exception calling fetch. ";
     }
@@ -2404,6 +2473,9 @@ async function iserverFetch({
       let errMsg = "Impression server error or timeout. " + fetchExceptionError;
       if (result.text != undefined && typeof result.text == "function") {
         const errTxt = await result.text();
+
+        if (misc.logIServerDetails) log.info("fetch text() response:", errTxt);
+
         errMsg += errTxt;
       }
 
@@ -2420,6 +2492,9 @@ async function iserverFetch({
       };
     }
     const response = (await result.json()) as IServerResponse | undefined;
+
+    if (misc.logIServerDetails) log.info("fetch json() response", response);
+
     if (response == undefined) {
       const error: ErrorFetch = {
         errorType: "fetch",
@@ -2490,6 +2565,8 @@ async function iserverFetch({
       flags: undefined,
       error,
     };
+  } finally {
+    if (misc.logIServerDetails) log.info("iserver fetch END ------");
   }
 }
 
