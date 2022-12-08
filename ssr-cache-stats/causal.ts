@@ -467,6 +467,9 @@ export class Session {
     // this track the number of times useImpression() returned with loading == true
     // it's used a part of testing, to ensure we are not doing this incorrectly
     loadingImpressionsCount: number;
+
+    // iserver communication information
+    commSnapshot: CommSnapshot;
   };
 
   constructor(args: SessionArgs, req?: IncomingMessage) {
@@ -485,26 +488,32 @@ export class Session {
       hydrating: false,
       hydrationKeys: [],
       loadingImpressionsCount: 0,
+      commSnapshot: {
+        fetches: 0,
+        featuresReceived: 0,
+        featuresRequested: 0,
+        errorsReceived: 0,
+        errorsAndWarnings: [],
+      },
     };
 
     if (req) this.addIncomingMessageArgs(req);
     this._.cache.testAndTouchSession();
   }
 
-
   /**
    * Mark the session as still active
    */
-  keepAlive() : boolean {
+  keepAlive(): boolean {
     // rate limit the keep alives to no more than 1 per second
-    if ((Date.now() - Session.lastKeepAlive) > 1000) {
-        Session.lastKeepAlive = Date.now();
-        network.sendBeacon({ id: this._.args });
-        return true;
+    if (Date.now() - Session.lastKeepAlive > 1000) {
+      Session.lastKeepAlive = Date.now();
+      network.sendBeacon({ id: this._.args });
+      return true;
     }
     return false;
   }
-  static lastKeepAlive : number = 0
+  static lastKeepAlive = 0;
 
   /**
    * The currently active experiment variants
@@ -513,12 +522,23 @@ export class Session {
     return this._.activeVariants;
   }
 
+  /** Returns information about this sessions communication with the impression server */
+  commSnapshot(): CommSnapshot {
+    return this._.commSnapshot;
+  }
+
   /**
    * Serializes a session to JSON. Used in conjunction with [[fromJSON]]. Useful to transfer a session across a JSON serialization boundary
    *
    * @returns the serialized JSON
    */
   toJSON(): SessionJSON {
+    if (this._.commSnapshot.fetches == 0) {
+      log.warn(
+        "Session.toJSON() called before a call to requestImpression() or requestCacheFill()"
+      );
+    }
+
     const cacheJson: Record<string, string> = {};
     const featureJson: (_RequestStoreEntry & {
       featureName: string;
@@ -547,8 +567,9 @@ export class Session {
 
     const sessionJson: SessionJSON = {
       sessionArgs: this._.args,
-      cacheJson: cacheJson,
+      cacheJson,
       featureJson,
+      commSnapshotJson: this.commSnapshot(),
       originator: this._.originator,
       activeVariants: this.activeVariants,
     };
@@ -617,6 +638,9 @@ export class Session {
         }
       }
     }
+
+    // dump the transferred snapshot into the cache to make it easy to view in the browser
+    session._.cache.set("transferredCommSnapshot", json.commSnapshotJson);
 
     if (featuresJson != undefined) {
       for (const { featureName, args, ...entry } of featuresJson) {
@@ -746,11 +770,30 @@ export class Session {
     const cachedFlags = cache.flags();
     if (cachedFlags != undefined) return { flags: cachedFlags };
 
-    const { flags: responseFlags, error } = await iserverFetch({
+    const {
+      flags: responseFlags,
+      error,
+      warning,
+      featuresRequested,
+      featuresReceived,
+    } = await iserverFetch({
       sessionArgs: args,
       implicitArgs: session._.implicitArgs,
       options: ["flags"],
     });
+
+    session._.commSnapshot.fetches += 1;
+    session._.commSnapshot.featuresRequested += featuresRequested;
+    session._.commSnapshot.featuresReceived += featuresReceived;
+    if (error) {
+      session._.commSnapshot.errorsReceived += 1;
+      session._.commSnapshot.errorsAndWarnings.unshift(error);
+    }
+    if (warning) {
+      session._.commSnapshot.errorsReceived += 1;
+      session._.commSnapshot.errorsAndWarnings.unshift(warning);
+    }
+    session._.commSnapshot.errorsAndWarnings.splice(5);
 
     if (!error) {
       if (responseFlags == undefined)
@@ -851,13 +894,34 @@ async function requestImpression<T extends FeatureNames>(
 
   const fetchOptions: FetchOptions[] = [];
 
-  const { flags, impression, error, activeVariants } = await iserverFetch({
+  const {
+    flags,
+    impression,
+    error,
+    warning,
+    activeVariants,
+    featuresRequested,
+    featuresReceived,
+  } = await iserverFetch({
     options: fetchOptions,
     impressionId,
     sessionArgs: session._.args,
     implicitArgs: session._.implicitArgs,
     wireArgs: query._.wireArgs,
   });
+
+  session._.commSnapshot.fetches += 1;
+  session._.commSnapshot.featuresRequested += featuresRequested;
+  session._.commSnapshot.featuresReceived += featuresReceived;
+  if (error) {
+    session._.commSnapshot.errorsReceived += 1;
+    session._.commSnapshot.errorsAndWarnings.unshift(error);
+  }
+  if (warning) {
+    session._.commSnapshot.errorsReceived += 1;
+    session._.commSnapshot.errorsAndWarnings.unshift(warning);
+  }
+  session._.commSnapshot.errorsAndWarnings.splice(5);
 
   // not needed for the impression stuff, but might as well cache them since we got them
   if (flags) cache.setFlags(flags);
@@ -914,6 +978,7 @@ export function useSessionJSON(json: SessionJSON): Session {
 
   return sessionRef.current as Session;
 }
+
 function makeBackingStore(
   cacheType: CacheType,
   makeCustomStore?: () => _BackingStore
@@ -1073,12 +1138,24 @@ type CacheType =
   | "customLocalStorage";
 
 /**
+ * Information relating to the communication with the impression server
+ */
+export type CommSnapshot = {
+  fetches: number;
+  featuresRequested: number;
+  featuresReceived: number;
+  errorsReceived: number;
+  errorsAndWarnings: ErrorTypes[];
+};
+
+/**
  * A session converted to JSON. Used in conjunction with [[Session.toJSON]] and [[Session.fromJSON]]. These are useful to transfer a session across a JSON serialization boundary
  */
 export type SessionJSON = {
   sessionArgs: Partial<SessionArgs>;
   originator: "ssr" | "csr";
   cacheJson: Record<string, unknown>;
+  commSnapshotJson: CommSnapshot;
   featureJson:
     | (_RequestStoreEntry & { featureName: string; args: unknown })[]
     | undefined;
@@ -1368,7 +1445,7 @@ const flagsKey = "flags";
 
 const causalRegisteredKey = "_causal_registered";
 
-// feature have no prefix in the cache
+// features have no prefix in the cache
 // non features are prefix with this
 const nonFeaturePrefix = "_";
 
@@ -1956,21 +2033,21 @@ export type ReportFn = (data: { variants: ActiveVariant[] }) => void;
  */
 export type CausalOptions = {
   /**
-   * By default Causal will send all network requests as defined by the impression server environment variables
+   * By default Causal will send all network requests as defined by the impression server environment variables.
    * See: https://tech.causallabs.io/docs/reference/install/configuration/
    *
-   * You can alternatively set it here - for example if you want to use a different URL on the client and server.
+   * You can alternatively set it here.
    */
   baseUrl?: string;
 
   /**
-   * useServerSentEvents: Use server side events to update features
+   * useServerSentEvents: Use server side events to update features.
    * Defaults to true for registered devices, false otherwise.
    */
   useServerSentEvents?: boolean;
 
   /**
-   * How long to wait for the impression server to respond before a timeout
+   * How long to wait for the impression server to respond before a timeout.
    * The default is 1000 ms (1 second)
    */
   timeoutMs?: number;
@@ -1984,12 +2061,20 @@ export type CausalOptions = {
   logLevel?: ("info" | "warn" | "error")[];
 
   /**
-   * If true, log to console.info() all the request and response information to/from the iserver
-   * This is useful for diagnostics, and generally should NOT be set
+   * If true, log to info() all the request and response information to/from the iserver.
+   * This is useful for diagnostics, and generally should NOT be set. It is very verbose.
    *
-   * The default is false
+   * The default is false.
    */
   logIServerDetails?: boolean;
+
+  /**
+   * If true, log to warn() any errors communicating with the iserver.
+   * Errors include timeouts, exceptions thrown from fetch, and empty responses.
+   *
+   * The default is true.
+   */
+  logIServerCommErrors?: boolean;
 };
 
 /**
@@ -2082,13 +2167,14 @@ export function _getLog() {
 }
 
 type MiscOptions = Required<Pick<CausalDebugOptions, "ssr">> &
-  Required<Pick<CausalOptions, "logIServerDetails">>;
+  Required<Pick<CausalOptions, "logIServerDetails" | "logIServerCommErrors">>;
 
 const defaultSSR = typeof window == "undefined";
 
 const defaultMisc: MiscOptions = {
   ssr: defaultSSR,
   logIServerDetails: false,
+  logIServerCommErrors: true,
 };
 const misc: MiscOptions = { ...defaultMisc };
 
@@ -2166,6 +2252,7 @@ export function initCausal(
   let baseUrl = options?.baseUrl ? normalizeUrl(options?.baseUrl) : undefined;
   misc.ssr = debugOptions?.ssr ?? defaultSSR;
   misc.logIServerDetails = options?.logIServerDetails ?? false;
+  misc.logIServerCommErrors = options?.logIServerCommErrors ?? true;
 
   log = { ...defaultLog };
   log.info = debugOptions?.logInfo ?? defaultLog.info;
@@ -2368,6 +2455,11 @@ function cleanWireArgs(wireArgs: _WireArgs | undefined): _WireArgs {
   return wireArgs == undefined ? {} : JSON.parse(JSON.stringify(wireArgs));
 }
 
+function logIServerIssue(message: string, ...optionalParams: unknown[]): void {
+  if (misc.logIServerCommErrors) log.warn(message, ...optionalParams);
+  else if (misc.logIServerDetails) log.info(message, ...optionalParams);
+}
+
 /**
  * Make the actual network call to the impression server to get feature and flag information
  *
@@ -2392,7 +2484,10 @@ async function iserverFetch({
   impression?: ImpressionImpl;
   flags?: Flags<FeatureNames>;
   error?: ErrorTypes;
+  warning?: ErrorTypes;
   activeVariants?: ActiveVariant[];
+  featuresRequested: number;
+  featuresReceived: number;
 }> {
   const fetchOptions = [...options];
 
@@ -2412,9 +2507,8 @@ async function iserverFetch({
     }
 
     let result: _FetchResponse | undefined = undefined;
-    let fetchExceptionError = "";
-
     wireArgs = cleanWireArgs(wireArgs);
+    const featuresRequested = Object.keys(wireArgs ?? {}).length;
 
     try {
       const body: {
@@ -2445,68 +2539,109 @@ async function iserverFetch({
 
       result = await network.fetch(url, payload);
 
-      if (misc.logIServerDetails) log.info("fetch fetch() result:", result);
-    } catch (e) {
-      if (misc.logIServerDetails) log.info("fetch threw an exception:", e);
+      if (misc.logIServerDetails) log.info("fetch() result:", result);
 
-      if ((e as Error).message) fetchExceptionError = (e as Error).message;
-      else fetchExceptionError = "Unknown exception calling fetch. ";
+      if (result == undefined) {
+        const msg = "Received undefined or null fetch() result ";
+        logIServerIssue(msg);
+      }
+    } catch (e) {
+      const errMsg = "fetch threw an exception: ";
+      logIServerIssue(errMsg, e);
+
+      const error: ErrorFetch = {
+        errorType: "fetch",
+        message: errMsg,
+      };
+
+      return {
+        impression: undefined,
+        flags: undefined,
+        error,
+        featuresRequested,
+        featuresReceived: 0,
+      };
     }
 
     if (result == undefined) {
-      const errMsg =
-        "Received null or undefined result. Impression server error or timeout. " +
-        fetchExceptionError;
+      const errMsg = "fetch returned null";
 
-      const error: ErrorFetch = {
-        errorType: "fetch",
+      const error: ErrorFetchResponse = {
+        errorType: "fetchResponse",
         message: errMsg,
       };
-      log.debug(1, errMsg);
 
       return {
         impression: undefined,
         flags: undefined,
         error,
+        featuresRequested,
+        featuresReceived: 0,
       };
     } else if (result.status != 200) {
-      let errMsg = "Impression server error or timeout. " + fetchExceptionError;
+      let errMsg = `Impression server non 200. Result = ${result.status}.`;
       if (result.text != undefined && typeof result.text == "function") {
         const errTxt = await result.text();
-
-        if (misc.logIServerDetails) log.info("fetch text() response:", errTxt);
-
-        errMsg += errTxt;
+        errMsg += `  fetch text() response = ${errTxt}.`;
       }
+
+      logIServerIssue(errMsg);
+
+      const error: ErrorFetchResponse = {
+        errorType: "fetchResponse",
+        message: errMsg,
+      };
+
+      return {
+        impression: undefined,
+        flags: undefined,
+        error,
+        featuresReceived: 0,
+        featuresRequested,
+      };
+    }
+
+    let response = undefined;
+    try {
+      response = (await result.json()) as IServerResponse | undefined;
+
+      if (misc.logIServerDetails) log.info("fetch...json() response", response);
+
+      if (response == undefined || Object.keys(response).length == 0) {
+        const errMsg =
+          response == undefined
+            ? "Unexpected undefined or null response callling fetch...json()"
+            : "Response was defined calling fetch...json(), but contained no data";
+        logIServerIssue(errMsg);
+
+        const error: ErrorFetchResponse = {
+          errorType: "fetchResponse",
+          message: errMsg,
+        };
+
+        return {
+          impression: undefined,
+          flags: undefined,
+          error,
+          featuresRequested,
+          featuresReceived: 0,
+        };
+      }
+    } catch (e) {
+      const errMsg = "exception thrown calling fetch...json()";
+      logIServerIssue(errMsg, e);
 
       const error: ErrorFetch = {
         errorType: "fetch",
         message: errMsg,
       };
-      log.debug(1, errMsg);
 
       return {
         impression: undefined,
         flags: undefined,
         error,
-      };
-    }
-    const response = (await result.json()) as IServerResponse | undefined;
-
-    if (misc.logIServerDetails) log.info("fetch json() response", response);
-
-    if (response == undefined) {
-      const error: ErrorFetch = {
-        errorType: "fetch",
-        message: "unexpected null response or timeout",
-      };
-      const errMsg = "Impression server error: " + JSON.stringify(error);
-      log.debug(1, errMsg);
-
-      return {
-        impression: undefined,
-        flags: undefined,
-        error,
+        featuresRequested,
+        featuresReceived: 0,
       };
     }
 
@@ -2517,8 +2652,6 @@ async function iserverFetch({
       ...wireOutputs
     } = response;
 
-    log.debug(4, "fetch outputs:", wireOutputs);
-
     const impression = new ImpressionImpl({
       impressionType: "real",
       sessionKeys: sessionKeys(wireOutputs.session as SessionArgs),
@@ -2526,14 +2659,39 @@ async function iserverFetch({
       wireOutputs,
     });
 
+    let error: ErrorTypes | undefined = undefined;
+    let warning: ErrorTypes | undefined = undefined;
+
     let returnFlags = responseFlags;
-    if (fetchOptions?.includes("flags") && responseFlags == undefined) {
-      log.warn("unexpected empty response flags");
-      returnFlags = returnFlags ?? defaultFlags;
+
+    const { session, ...restOfFeatures } = wireOutputs ?? {};
+    const featuresReceived = Object.keys(restOfFeatures ?? {}).length;
+
+    if (featuresRequested > 0 && featuresReceived == 0) {
+      const errMsg = "no features were returned by the impression server";
+      logIServerIssue(errMsg);
+      warning = {
+        errorType: "fetchResponse",
+        message: errMsg,
+      };
     }
 
-    let error: ErrorField | undefined = undefined;
-    if (errors != undefined) {
+    if (session == undefined) {
+      const errMsg = "no session returned from impression server";
+      logIServerIssue(errMsg);
+      error = {
+        errorType: "fetchResponse",
+        message: errMsg,
+      };
+    } else if (fetchOptions?.includes("flags") && responseFlags == undefined) {
+      const errMsg = "unexpected empty response flags";
+      logIServerIssue(errMsg);
+      error = {
+        errorType: "fetchResponse",
+        message: errMsg,
+      };
+      returnFlags = returnFlags ?? defaultFlags;
+    } else if (errors != undefined) {
       error = {
         errorType: "field",
         message: "fetch succeeded, but one or more fields had an error",
@@ -2549,11 +2707,14 @@ async function iserverFetch({
       impression,
       flags: returnFlags,
       error,
+      warning,
       activeVariants,
+      featuresRequested,
+      featuresReceived,
     };
   } catch (e) {
-    const errMsg = "unexpected error in network.fetch";
-    log.warn(errMsg, e);
+    const errMsg = "unexpected iserverFetch exception.";
+    logIServerIssue(errMsg, e);
 
     const error: ErrorFetch = {
       errorType: "fetch",
@@ -2564,6 +2725,8 @@ async function iserverFetch({
       impression: undefined,
       flags: undefined,
       error,
+      featuresRequested: 0,
+      featuresReceived: 0,
     };
   } finally {
     if (misc.logIServerDetails) log.info("iserver fetch END ------");
@@ -2709,10 +2872,18 @@ function updateImpressionIds<T extends FeatureNames>(
 }
 
 /**
- * ErrorType indicated that a network fetch failed
+ * ErrorType indicated that a network fetch failed in some way
  */
 export type ErrorFetch = {
   errorType: "fetch";
+  message: string;
+};
+
+/**
+ * Error type indicated the response data was invalid in some way
+ */
+export type ErrorFetchResponse = {
+  errorType: "fetchResponse";
   message: string;
 };
 
@@ -2736,7 +2907,11 @@ export type ErrorField = {
 /**
  * Union type of possible Causal error types
  */
-export type ErrorTypes = ErrorFetch | ErrorUnknown | ErrorField;
+export type ErrorTypes =
+  | ErrorFetch
+  | ErrorFetchResponse
+  | ErrorUnknown
+  | ErrorField;
 
 type FlagsNone = { state: "none" };
 type FlagsLoading = { state: "loading" };

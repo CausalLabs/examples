@@ -35,29 +35,29 @@ export default function Layout({
           {!featuresToShow.includes("RatingBox") && <div>--</div>}
 
           <h2>Reload Links</h2>
-          <a href="/" data-test-id="reload-index">
+          <a href="/" data-testid="reload-index">
             Index
           </a>
           <br />
-          <a href="/overfetch" data-test-id="reload-overfetch">
+          <a href="/overfetch" data-testid="reload-overfetch">
             Overfetch
           </a>
           <br />
-          <a href="/underfetch" data-test-id="reload-underfetch">
+          <a href="/underfetch" data-testid="reload-underfetch">
             Underfetch
           </a>
           <br />
           <h2>Next Links</h2>
           <Link href="/">
-            <a data-test-id="next-index">Index</a>
+            <a data-testid="next-index">Index</a>
           </Link>
           <br />
           <Link href="/overfetch">
-            <a data-test-id="next-overfetch">Overfetch</a>
+            <a data-testid="next-overfetch">Overfetch</a>
           </Link>
           <br />
           <Link href="/underfetch">
-            <a data-test-id="next-underfetch">Underfetch</a>
+            <a data-testid="next-underfetch">Underfetch</a>
           </Link>
           <h2>Client Stats</h2>
           <StatsDisplay />
