@@ -27,11 +27,11 @@ export default function StatsDisplay() {
 
   return (
     <>
-      <div data-test-id="loading-impressions">
+      <div data-testid="loading-impressions">
         {stats?.loadingImpressions} Loading Impressions
       </div>
-      <div data-test-id="cache-hits">{stats?.cacheHits.length} Cache Hits </div>
-      <div data-test-id="cache-misses">
+      <div data-testid="cache-hits">{stats?.cacheHits.length} Cache Hits </div>
+      <div data-testid="cache-misses">
         {stats?.cacheMisses.length} Cache Misses{" "}
       </div>
     </>

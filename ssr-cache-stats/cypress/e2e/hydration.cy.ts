@@ -31,40 +31,40 @@ describe("hydration success", () => {
       for (let jj = ii; jj < links.length; jj++) {
         const { url: url2, testId: testId2 } = links[jj];
         cy.wait(750); // if we don't wait, the clicks cancel previous loads
-        cy.get(`[data-test-id=${testId1}]`).click();
+        cy.get(`[data-testid=${testId1}]`).click();
         cy.url().should("equal", url1);
 
         cy.wait(750);
-        cy.get(`[data-test-id=${testId2}]`).click();
+        cy.get(`[data-testid=${testId2}]`).click();
         cy.url().should("equal", url2);
       }
 
       cy.wait(750);
-      cy.get(`[data-test-id=${testId1}]`).click();
+      cy.get(`[data-testid=${testId1}]`).click();
       cy.url().should("equal", url1);
     }
   });
 
   it("no client side loading impressions", () => {
     cy.visit("http://localhost:8080");
-    cy.get("[data-test-id=loading-impressions]").contains(/^0 /);
-    cy.get("[data-test-id=cache-misses]").contains(/^0 /);
+    cy.get("[data-testid=loading-impressions]").contains(/^0 /);
+    cy.get("[data-testid=cache-misses]").contains(/^0 /);
 
-    cy.get("[data-test-id=next-underfetch").click();
+    cy.get("[data-testid=next-underfetch").click();
     cy.wait(750);
-    cy.get("[data-test-id=loading-impressions]").contains(/^0 /);
-    cy.get("[data-test-id=cache-misses]").contains(/^0 /);
+    cy.get("[data-testid=loading-impressions]").contains(/^0 /);
+    cy.get("[data-testid=cache-misses]").contains(/^0 /);
 
     cy.visit("http://localhost:8080/underfetch");
     cy.wait(750);
-    cy.get("[data-test-id=next-index").click();
+    cy.get("[data-testid=next-index").click();
     cy.wait(750);
-    cy.get("[data-test-id=loading-impressions]").contains(/^0 /);
-    cy.get("[data-test-id=cache-misses]").contains(/^0 /);
-    cy.get("[data-test-id=next-underfetch").click();
+    cy.get("[data-testid=loading-impressions]").contains(/^0 /);
+    cy.get("[data-testid=cache-misses]").contains(/^0 /);
+    cy.get("[data-testid=next-underfetch").click();
     cy.wait(750);
-    cy.get("[data-test-id=loading-impressions]").contains(/^0 /);
-    cy.get("[data-test-id=cache-misses]").contains(/^0 /);
+    cy.get("[data-testid=loading-impressions]").contains(/^0 /);
+    cy.get("[data-testid=cache-misses]").contains(/^0 /);
   });
 });
 

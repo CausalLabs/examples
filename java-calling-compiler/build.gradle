@@ -6,7 +6,7 @@ plugins {
 repositories {
     mavenCentral()
     mavenLocal()
-    // the runtime and iserver jars come from here
+    // io.causallabs jars come from here
     maven { url 'https://maven.causallabs.io' }
 }
 
