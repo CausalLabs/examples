@@ -46,8 +46,7 @@ export class RatingBox {
     /** Occurs each time a rating is collected   
     *  */
     signalRating( { stars } 
-        : {  stars : number  } ) : void
-    {
+        : {  stars : number  } ) : void {
       RatingBox.signalRating( this._.impression.sessionKeys, this._.impressionId, { stars, } );
     }
     /** Occurs each time a rating is collected   
@@ -62,7 +61,7 @@ export class RatingBox {
           impressionId: impressionId,
           args: {  stars: stars  }
         };
-      network.sendBeacon(_data);
+      network.sendBeacon(getCausalHeaders(sessionKeys), _data);
     }
 
   constructor( 
@@ -75,6 +74,8 @@ export class RatingBox {
         this.callToAction = outputs.callToAction ?? undefined;
     } else {
         this.callToAction = "Rate this product!";    }
+
+    bindAllMethods(this);
   }
 }
 /** An empty feature to use only as a kill switch
@@ -105,6 +106,8 @@ export class ProductInfo {
     args: NonNullable<_WireArgs["ProductInfo"]>, 
     outputs: ProductInfoWireOutputs ) {
     this._ = {impression, impressionId: outputs._impressionId};
+
+    bindAllMethods(this);
   }
 }
 /** Another feature just for demonstration purposes
@@ -141,8 +144,7 @@ export class Feature2 {
     /** Example event   
     *  */
     signalExampleEvent( { data } 
-        : {  data : string  } ) : void
-    {
+        : {  data : string  } ) : void {
       Feature2.signalExampleEvent( this._.impression.sessionKeys, this._.impressionId, { data, } );
     }
     /** Example event   
@@ -157,7 +159,7 @@ export class Feature2 {
           impressionId: impressionId,
           args: {  data: data  }
         };
-      network.sendBeacon(_data);
+      network.sendBeacon(getCausalHeaders(sessionKeys), _data);
     }
 
   constructor( 
@@ -170,6 +172,8 @@ export class Feature2 {
         this.exampleOutput = outputs.exampleOutput ?? undefined;
     } else {
         this.exampleOutput = "Example output";    }
+
+    bindAllMethods(this);
   }
 }
 
@@ -238,6 +242,7 @@ class ImpressionImpl implements Impression<FeatureNames> {
         ) as any; // eslint-disable-line
       }
     }
+    bindAllMethods(this);
   }
 
   RatingBox?: RatingBox 
@@ -331,6 +336,10 @@ export class Query<T extends FeatureNames>{
 
     /** @internal **/
     readonly _: {wireArgs: _WireArgs} = {wireArgs: {}};
+
+    constructor() {
+        bindAllMethods(this);
+    }
 }
 
 /**
@@ -499,6 +508,7 @@ export class Session {
 
     if (req) this.addIncomingMessageArgs(req);
     this._.cache.testAndTouchSession();
+    bindAllMethods(this);
   }
 
   /**
@@ -508,7 +518,9 @@ export class Session {
     // rate limit the keep alives to no more than 1 per second
     if (Date.now() - Session.lastKeepAlive > 1000) {
       Session.lastKeepAlive = Date.now();
-      network.sendBeacon({ id: this._.args });
+      network.sendBeacon(getCausalHeaders(sessionKeys(this._.args)), {
+        id: this._.args,
+      });
       return true;
     }
     return false;
@@ -760,13 +772,13 @@ export class Session {
    * On an error, it will return the default flags and an additional informational error value.
    *
    */
-  async requestFlags(session: Session): Promise<{
+  async requestFlags(): Promise<{
     flags: Flags<FeatureNames>;
     error?: ErrorTypes;
   }> {
-    const args = session._.args;
+    const args = this._.args;
 
-    const cache = session._.cache;
+    const cache = this._.cache;
     const cachedFlags = cache.flags();
     if (cachedFlags != undefined) return { flags: cachedFlags };
 
@@ -778,22 +790,22 @@ export class Session {
       featuresReceived,
     } = await iserverFetch({
       sessionArgs: args,
-      implicitArgs: session._.implicitArgs,
+      implicitArgs: this._.implicitArgs,
       options: ["flags"],
     });
 
-    session._.commSnapshot.fetches += 1;
-    session._.commSnapshot.featuresRequested += featuresRequested;
-    session._.commSnapshot.featuresReceived += featuresReceived;
+    this._.commSnapshot.fetches += 1;
+    this._.commSnapshot.featuresRequested += featuresRequested;
+    this._.commSnapshot.featuresReceived += featuresReceived;
     if (error) {
-      session._.commSnapshot.errorsReceived += 1;
-      session._.commSnapshot.errorsAndWarnings.unshift(error);
+      this._.commSnapshot.errorsReceived += 1;
+      this._.commSnapshot.errorsAndWarnings.unshift(error);
     }
     if (warning) {
-      session._.commSnapshot.errorsReceived += 1;
-      session._.commSnapshot.errorsAndWarnings.unshift(warning);
+      this._.commSnapshot.errorsReceived += 1;
+      this._.commSnapshot.errorsAndWarnings.unshift(warning);
     }
-    session._.commSnapshot.errorsAndWarnings.splice(5);
+    this._.commSnapshot.errorsAndWarnings.splice(5);
 
     if (!error) {
       if (responseFlags == undefined)
@@ -847,7 +859,19 @@ export class Session {
       cacheNoOps,
       loadingImpressions,
     };
-  }
+  };
+}
+
+// eslint-disable-next-line
+function bindAllMethods(obj: any) {
+  // this is used in exported class constructors
+  // so that those classes can be destructured
+  // w/o worrying about "this" semantics
+
+  Object.getOwnPropertyNames(Object.getPrototypeOf(obj))
+    .filter((method) => typeof obj[method] === "function")
+    .filter((method) => method != "constructor")
+    .forEach((method) => (obj[method] = obj[method].bind(obj)));
 }
 
 type ImplicitArgs = {
@@ -1969,6 +1993,7 @@ export type _FetchRequestInit = {
   body?: string;
   signal?: AbortSignal;
   headers?: Record<string, string>;
+  keepalive?: boolean;
 };
 
 // eslint-disable-next-line
@@ -2101,13 +2126,6 @@ export type CausalDebugOptions = {
   logError?: _LogFn;
 
   /**
-   * By default, when running in the browser, Causal uses Navigator.sendBeacons to send non synchronous data.
-   * By default, when running in node, Causal uses fetch.
-   * You can alter this behavior by setting this function
-   */
-  sendBeacon?: (data: unknown) => void;
-
-  /**
    * By default, Causal uses cross-fetch to fetch
    * You can alter this behavior by setting this function
    */
@@ -2202,21 +2220,13 @@ let cacheOptions = { ...defaultCacheOptions };
 let baseUrl: string | undefined = undefined;
 const defaultNetwork = {
   timeoutMs: 1000,
-  sendBeacon: (data: unknown) => {
-    if (typeof navigator == "undefined") {
-      // we are running server side
-      log.debug(2, "defaultSendBeacon as fetch");
-      network.fetch(network.getBaseUrl() + "signal", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
-    } else {
-      log.debug(2, "defaultSendBeacon as beacon");
-      navigator.sendBeacon(
-        network.getBaseUrl() + "signal",
-        JSON.stringify(data)
-      );
-    }
+  sendBeacon: (headers: Record<string, string>, data: unknown) => {
+    network.fetch(network.getBaseUrl() + "signal", {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers,
+      keepalive: true,
+    });
   },
   fetch: (
     url: _FetchUrl,
@@ -2300,7 +2310,16 @@ export function initCausal(
           });
       }
     },
-    sendBeacon: debugOptions?.sendBeacon ?? defaultNetwork.sendBeacon,
+
+    sendBeacon: (headers: Record<string, string>, data: unknown) => {
+      network.fetch(network.getBaseUrl() + "signal", {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers,
+        keepalive: true,
+      });
+    },
+
     newEvtSource: debugOptions?.newEvtSource ?? defaultNetwork.newEvtSource,
   };
 
@@ -2793,7 +2812,7 @@ function sendImpressionBeacon(
   });
 
   if (count > 0) {
-    network.sendBeacon({
+    network.sendBeacon(getCausalHeaders(sessionKeys(session._.args)), {
       id: impression.sessionKeys,
       impressions: impressionIdMap,
     });
@@ -2988,7 +3007,7 @@ export function useFlags(session?: Session): {
 
       log.debug(1, "request");
 
-      const { flags, error } = await session.requestFlags(session as Session);
+      const { flags, error } = await session.requestFlags();
       flagsState.current = {
         state: "done",
         flags,
