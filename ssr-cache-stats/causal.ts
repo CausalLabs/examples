@@ -24,7 +24,6 @@ type RatingBoxWireOutputs = {
  *   */
 export class RatingBox {
     /** The product that we are collecting ratings for
-     *  Default: null
      *   */
     readonly product: string;
     /** The text next to the stars that prompts the visitor to rate the product
@@ -122,7 +121,6 @@ type Feature2WireOutputs = {
  *   */
 export class Feature2 {
     /** Example args
-     *  Default: null
      *   */
     readonly exampleArg: string;
     /** Example output
@@ -388,7 +386,6 @@ export type _WireOutputs = {
 }
 
 type SessionKeys = {
-    /**  Default: null */
     deviceId?: string
     };
 
