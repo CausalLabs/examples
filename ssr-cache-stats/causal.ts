@@ -12,23 +12,30 @@ import {
 //#region  parameterized
 
 
-/** Wraps a rating box that we can put on various product pages to collect ratings from our users
- *   */
+/** 
+* Wraps a rating box that we can put on various product pages
+* to collect ratings from our users
+*/
 type RatingBoxWireOutputs = {
   readonly callToAction: string | undefined;
   readonly _impressionId: string;
   readonly _variants?: WireVariant[];
 }
 
-/** Wraps a rating box that we can put on various product pages to collect ratings from our users
- *   */
+/** 
+* Wraps a rating box that we can put on various product pages
+* to collect ratings from our users
+*/
 export class RatingBox {
-    /** The product that we are collecting ratings for
-     *   */
+    /** 
+    * The product that we are collecting ratings for
+    */
     readonly product: string;
-    /** The text next to the stars that prompts the visitor to rate the product
+    /** 
+     * The text next to the stars that prompts the visitor to rate the product
+     *
      *  Control: "Rate this product!"
-     *   */
+     */
     readonly callToAction: string;
 
     /** @internal */
@@ -42,14 +49,16 @@ export class RatingBox {
         impressionId: string;
     }
 
-    /** Occurs each time a rating is collected   
-    *  */
+    /**
+     * Occurs each time a rating is collected
+    */
     signalRating( { stars } 
         : {  stars : number  } ) : void {
       RatingBox.signalRating( this._.impression.sessionKeys, this._.impressionId, { stars, } );
     }
-    /** Occurs each time a rating is collected   
-      *  */
+    /** 
+     * Occurs each time a rating is collected
+     */
     static signalRating( sessionKeys: SessionKeys, impressionId : string,  { stars } 
         : {  stars : number  } ) : void
     {
@@ -77,15 +86,17 @@ export class RatingBox {
     bindAllMethods(this);
   }
 }
-/** An empty feature to use only as a kill switch
- *   */
+/** 
+* An empty feature to use only as a kill switch
+*/
 type ProductInfoWireOutputs = {
   readonly _impressionId: string;
   readonly _variants?: WireVariant[];
 }
 
-/** An empty feature to use only as a kill switch
- *   */
+/** 
+* An empty feature to use only as a kill switch
+*/
 export class ProductInfo {
 
     /** @internal */
@@ -109,23 +120,28 @@ export class ProductInfo {
     bindAllMethods(this);
   }
 }
-/** Another feature just for demonstration purposes
- *   */
+/** 
+* Another feature just for demonstration purposes
+*/
 type Feature2WireOutputs = {
   readonly exampleOutput: string | undefined;
   readonly _impressionId: string;
   readonly _variants?: WireVariant[];
 }
 
-/** Another feature just for demonstration purposes
- *   */
+/** 
+* Another feature just for demonstration purposes
+*/
 export class Feature2 {
-    /** Example args
-     *   */
+    /** 
+    * Example args
+    */
     readonly exampleArg: string;
-    /** Example output
+    /** 
+     * Example output
+     *
      *  Control: "Example output"
-     *   */
+     */
     readonly exampleOutput: string;
 
     /** @internal */
@@ -139,14 +155,16 @@ export class Feature2 {
         impressionId: string;
     }
 
-    /** Example event   
-    *  */
+    /**
+     * Example event
+    */
     signalExampleEvent( { data } 
         : {  data : string  } ) : void {
       Feature2.signalExampleEvent( this._.impression.sessionKeys, this._.impressionId, { data, } );
     }
-    /** Example event   
-      *  */
+    /** 
+     * Example event
+     */
     static signalExampleEvent( sessionKeys: SessionKeys, impressionId : string,  { data } 
         : {  data : string  } ) : void
     {
@@ -259,18 +277,22 @@ class ImpressionImpl implements Impression<FeatureNames> {
  * @paramtype The feature to query for
  */
 export type QueryArgs<T extends FeatureNames> = 
-    /** Wraps a rating box that we can put on various product pages to collect ratings from our users
-     *   */
+    /**
+    * Wraps a rating box that we can put on various product pages
+    * to collect ratings from our users
+    */
     & ("RatingBox" extends T ?   
       { RatingBox : 
           {  product : string  } } : unknown ) 
-    /** An empty feature to use only as a kill switch
-     *   */
+    /**
+    * An empty feature to use only as a kill switch
+    */
     & ("ProductInfo" extends T ?   
       { ProductInfo : 
           { _ignore_forceExcessPropertyCheck?: undefined } } : unknown ) 
-    /** Another feature just for demonstration purposes
-     *   */
+    /**
+    * Another feature just for demonstration purposes
+    */
     & ("Feature2" extends T ?   
       { Feature2 : 
           {  exampleArg : string  } } : unknown ) 
@@ -308,23 +330,27 @@ export function createQuery<T extends FeatureNames>(
 *
 */
 export class Query<T extends FeatureNames>{
-    /** Wraps a rating box that we can put on various product pages to collect ratings from our users
-     *   */
+    /** 
+    * Wraps a rating box that we can put on various product pages
+    * to collect ratings from our users
+    */
     getRatingBox( { product } 
       : {  product : string  } )
         : Query<T | "RatingBox"> {
         this._.wireArgs['RatingBox'] = { product: product, }
         return this
     }
-    /** An empty feature to use only as a kill switch
-     *   */
+    /** 
+    * An empty feature to use only as a kill switch
+    */
     getProductInfo()
         : Query<T | "ProductInfo"> {
         this._.wireArgs['ProductInfo'] = { }
         return this
     }
-    /** Another feature just for demonstration purposes
-     *   */
+    /** 
+    * Another feature just for demonstration purposes
+    */
     getFeature2( { exampleArg } 
       : {  exampleArg : string  } )
         : Query<T | "Feature2"> {
@@ -483,7 +509,9 @@ export class Session {
       misc.ssr ? cacheOptions.ssrCacheType : cacheOptions.csrCacheType,
       cacheOptions.makeCustomStore
     );
-    const _cache = new _Cache(args, _backingStore, cacheOptions);
+    const _cache = new _Cache(args, _backingStore, cacheOptions, {
+      invalidateVariants: () => (this.activeVariants.length = 0),
+    });
 
     this._ = {
       args,
@@ -856,7 +884,7 @@ export class Session {
       cacheNoOps,
       loadingImpressions,
     };
-  };
+  }
 }
 
 // eslint-disable-next-line
@@ -1495,11 +1523,15 @@ export class _Cache {
     hits: Map<string, number>;
     misses: Map<string, number>;
   } = { hits: new Map(), misses: new Map() };
+  invalidateVariants: () => void;
 
   constructor(
     sessionArgs: Partial<SessionArgs> | undefined,
     backingStore: _BackingStore,
-    options: Required<CacheOptions>
+    options: Required<CacheOptions>,
+    callbacks: {
+      invalidateVariants: () => void;
+    }
   ) {
     const {
       outputExpirySeconds,
@@ -1512,6 +1544,7 @@ export class _Cache {
     this.useServerSentEvents = useServerSentEvents;
     this.sessionCacheExpirySeconds = sessionCacheExpirySeconds;
     this.sessionArgs = sessionArgs;
+    this.invalidateVariants = callbacks.invalidateVariants;
 
     if (sessionArgs == undefined) return;
 
@@ -1894,6 +1927,7 @@ export class _Cache {
 
     const mevt: MessageEvent = evt as MessageEvent;
     _flushCount++;
+    this.invalidateVariants();
     this.deleteAll(false);
     this.set(sseInfoKey, mevt.data);
   }

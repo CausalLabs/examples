@@ -2,6 +2,8 @@ package io.causallabs.example;
 
 import java.util.List;
 import java.util.UUID;
+import io.causallabs.runtime.Impression;
+import io.causallabs.runtime.ImpressionEvent;
 import io.causallabs.runtime.VariantValue;
 
 public class SessionPlugin implements SessionPluginBase {
@@ -23,7 +25,7 @@ public class SessionPlugin implements SessionPluginBase {
     }
 
     @Override
-    public void fill(Session session, Object impression) {
+    public void fill(Session session, Impression impression) {
         if (impression instanceof Simple) {
             Simple simple = (Simple) impression;
             // use the eval method to populate the plugin output values
@@ -32,7 +34,7 @@ public class SessionPlugin implements SessionPluginBase {
     }
 
     @Override
-    public void onImpression(Session session, Object impression) throws Exception {
+    public void onImpression(Session session, Impression impression) throws Exception {
         if (impression instanceof Simple) {
             Simple simple = (Simple) impression;
             // use the register method to tell other data systems that an impression has occured
@@ -44,7 +46,7 @@ public class SessionPlugin implements SessionPluginBase {
     }
 
     @Override
-    public void onEvent(Session session, Object impression, Object event) {
+    public void onEvent(Session session, Impression impression, ImpressionEvent event) {
         if (event instanceof Simple.Click) {
             Simple.Click click = (Simple.Click) event;
             System.out.println("Simple click with value: " + click.getClickValue());
