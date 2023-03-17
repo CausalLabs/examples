@@ -14,7 +14,7 @@ type FeaturesToQuery = SelectFeatures<"RatingBox">;
 
 type SSRProps = {
   product: typeof products[keyof typeof products];
-  json: ImpressionJSON<FeaturesToQuery>;
+  json: ImpressionJSON;
 };
 
 export async function getServerSideProps(
@@ -49,7 +49,7 @@ export async function getServerSideProps(
 export default function ProductInfo({ json, product }: SSRProps) {
   const [rating, setRating] = useState(0);
 
-  const impression = toImpression(json);
+  const impression = toImpression<FeaturesToQuery>(json);
 
   return (
     <div className="center">
