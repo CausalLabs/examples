@@ -1,0 +1,150 @@
+{
+  "data" : {
+    "authedTenant" : {
+      "name" : "Getting Started",
+      "metrics" : [ ],
+      "environment" : {
+        "name" : "production",
+        "id" : "df330a45-da76-45bf-833f-f324b8eae4d6",
+        "isProduction" : true,
+        "warehouseLocation" : "s3://causal-getting-started-1/prerelease",
+        "fdl" : null,
+        "fdlOrder" : [ "causal.fdl" ],
+        "warehouseTables" : [ ]
+      },
+      "environments" : [ {
+        "name" : "production",
+        "id" : "df330a45-da76-45bf-833f-f324b8eae4d6",
+        "isProduction" : true,
+        "warehouseLocation" : "s3://causal-getting-started-1/prerelease",
+        "fdl" : null,
+        "fdlOrder" : null,
+        "warehouseTables" : [ ]
+      } ],
+      "audiences" : [ ],
+      "features" : [ {
+        "name" : "Feature2",
+        "isDeprecated" : false,
+        "deprecatedReason" : null,
+        "deprecatedBy" : null,
+        "fields" : [ {
+          "name" : "exampleArg",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : ""
+        }, {
+          "name" : "exampleOutput",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : "{\"constant\":\"Example output\"}"
+        }, {
+          "name" : "firstTime",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : ""
+        }, {
+          "name" : "impressionCount",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : ""
+        }, {
+          "name" : "impressionIds",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : ""
+        } ],
+        "events" : [ {
+          "name" : "ExampleEvent",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "fields" : [ {
+            "name" : "data",
+            "isDeprecated" : false,
+            "deprecatedReason" : null,
+            "deprecatedBy" : null
+          } ]
+        } ]
+      }, {
+        "name" : "ProductInfo",
+        "isDeprecated" : false,
+        "deprecatedReason" : null,
+        "deprecatedBy" : null,
+        "fields" : [ {
+          "name" : "firstTime",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : ""
+        }, {
+          "name" : "impressionCount",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : ""
+        }, {
+          "name" : "impressionIds",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : ""
+        } ],
+        "events" : [ ]
+      }, {
+        "name" : "RatingBox",
+        "isDeprecated" : false,
+        "deprecatedReason" : null,
+        "deprecatedBy" : null,
+        "fields" : [ {
+          "name" : "callToAction",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : "{\"constant\":\"Rate this product!\"}"
+        }, {
+          "name" : "firstTime",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : ""
+        }, {
+          "name" : "impressionCount",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : ""
+        }, {
+          "name" : "impressionIds",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : ""
+        }, {
+          "name" : "product",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "controlValue" : ""
+        } ],
+        "events" : [ {
+          "name" : "Rating",
+          "isDeprecated" : false,
+          "deprecatedReason" : null,
+          "deprecatedBy" : null,
+          "fields" : [ {
+            "name" : "stars",
+            "isDeprecated" : false,
+            "deprecatedReason" : null,
+            "deprecatedBy" : null
+          } ]
+        } ]
+      } ],
+      "enums" : [ ]
+    }
+  }
+}

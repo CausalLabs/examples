@@ -1,0 +1,13 @@
+{
+  "/_app": "pages/_app.js",
+  "/_error": "pages/_error.js",
+  "/_document": "pages/_document.js",
+  "/api/microservice-example": "pages/api/microservice-example.js",
+  "/events-microservice": "pages/events-microservice.js",
+  "/": "pages/index.html",
+  "/react-example": "pages/react-example.html",
+  "/register": "pages/register.html",
+  "/ssr-cache": "pages/ssr-cache.js",
+  "/ssr-props": "pages/ssr-props.js",
+  "/404": "pages/404.html"
+}
