@@ -1,0 +1,39 @@
+"""
+An example feature for reference documentation purposes
+"""
+feature ExampleFeature {
+    args {
+        "An example string argument"
+        exampleString: String!
+    }
+    
+    output {
+        "An example string output"
+        exampleOutput: String! = "Example"
+    }
+
+    "Example integer event"
+    event Rating {
+        exampleEvent: Int! 
+    }
+}
+
+"""
+A second example feature for reference documentation purposes
+"""
+feature ExampleFeature2 {
+    args {
+        "An example string argument"
+        exampleInt: Int!
+    }
+    
+    output {
+        "An example int output"
+        exampleOutput: Int! = 1
+    }
+
+    "Example string event"
+    event Rating {
+        exampleEvent: String! 
+    }
+}

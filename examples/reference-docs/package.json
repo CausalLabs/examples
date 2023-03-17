@@ -1,0 +1,23 @@
+{
+  "name": "reference-docs",
+  "version": "1.0.0",
+  "description": "project to to generate typdoc api documentation",
+  "main": "reference.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "fdlgen": "npx causalc reference.fdl --typescript reference.ts",
+    "fdlgen:local": "bash -c 'cd ../../.. && ./gradlew :compiler:installDist' && ../../../compiler/build/install/compiler/bin/compiler reference.fdl --typescript reference.ts"
+  },
+  "author": "CausalLabs",
+  "dependencies": {
+    "@causal/compiler": "^0.30.0",
+    "cross-fetch": "^3.1.5",
+    "node-fetch": "^3.2.10",
+    "react": "^17.0.2",
+    "typescript": "^4.8.4"
+  },
+  "devDependencies": {
+    "@types/node": "^17.0.12",
+    "@types/react": "^17.0.38"
+  }
+}
