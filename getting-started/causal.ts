@@ -8,190 +8,108 @@ import {
   createContext,
 } from "react";
 
+class FeatureBase {
+  // featureName FeatureBasewill always be set
+  // we don't want to set them in the constructor
+  // This is to save on lines of geenrated code
+  // It is set when the impresson is created
+  featureName?: string;
+
+  readonly _: {
+    impressionId?: string;
+    impression?: ImpressionImpl;
+  } = {};
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 //#region  parameterized
 
+/* eslint-disable */
+
 
 /** 
 * Wraps a rating box that we can put on various product pages
 * to collect ratings from our users
 */
-type RatingBoxWireOutputs = {
-  readonly callToAction: string | undefined;
-  readonly _impressionId: string;
-  readonly _variants?: WireVariant[];
-}
-
-/** 
-* Wraps a rating box that we can put on various product pages
-* to collect ratings from our users
-*/
-export class RatingBox {
+export class RatingBox extends FeatureBase {
     /** 
     * The product that we are collecting ratings for
     */
-    readonly product: string;
+    readonly product: string = "";
     /** 
      * The text next to the stars that prompts the visitor to rate the product
      *
      *  Control: "Rate this product!"
      */
-    readonly callToAction: string;
-
-    /** @internal */
-    readonly _: {
-
-        /**
-        * when constructed from cache, this is the original impression
-        * otherwise it will be the the one associated with the fetch
-        */
-        impression: ImpressionImpl;
-        impressionId: string;
-    }
+    readonly callToAction: string = "Rate this product!";
 
     /**
      * Occurs each time a rating is collected
     */
     signalRating( { stars } 
         : {  stars : number  } ) : void {
-      RatingBox.signalRating( this._.impression.sessionKeys, this._.impressionId, { stars, } );
+            signalInstance(this, "Rating", arguments[0]);
     }
     /** 
      * Occurs each time a rating is collected
      */
-    static signalRating( sessionKeys: SessionKeys, impressionId : string,  { stars } 
+    static signalRating( sessionKeys: SessionKeys | Session, impressionId : string,  { stars } 
         : {  stars : number  } ) : void
-    {
-        const _data = { 
-          id : sessionKeys,
-          feature: "RatingBox",
-          event: "Rating",
-          impressionId: impressionId,
-          args: {  stars: stars  }
-        };
-      network.sendBeacon(getCausalHeaders(sessionKeys), _data);
+ {
+        signalStatic("RatingBox", "Rating", [...arguments]);
     }
-
-  constructor( 
-    impression: ImpressionImpl, 
-    args: NonNullable<_WireArgs["RatingBox"]>, 
-    outputs: RatingBoxWireOutputs ) {
-    this._ = {impression, impressionId: outputs._impressionId};
-    this.product = args.product;
-    if (outputs.callToAction !== undefined) {
-        this.callToAction = outputs.callToAction ?? undefined;
-    } else {
-        this.callToAction = "Rate this product!";    }
-
-    bindAllMethods(this);
   }
-}
-/** 
-* An empty feature to use only as a kill switch
-*/
-type ProductInfoWireOutputs = {
-  readonly _impressionId: string;
-  readonly _variants?: WireVariant[];
-}
 
 /** 
 * An empty feature to use only as a kill switch
 */
-export class ProductInfo {
+export class ProductInfo extends FeatureBase {
 
-    /** @internal */
-    readonly _: {
-
-        /**
-        * when constructed from cache, this is the original impression
-        * otherwise it will be the the one associated with the fetch
-        */
-        impression: ImpressionImpl;
-        impressionId: string;
-    }
-
-
-  constructor( 
-    impression: ImpressionImpl, 
-    args: NonNullable<_WireArgs["ProductInfo"]>, 
-    outputs: ProductInfoWireOutputs ) {
-    this._ = {impression, impressionId: outputs._impressionId};
-
-    bindAllMethods(this);
   }
-}
-/** 
-* Another feature just for demonstration purposes
-*/
-type Feature2WireOutputs = {
-  readonly exampleOutput: string | undefined;
-  readonly _impressionId: string;
-  readonly _variants?: WireVariant[];
-}
 
 /** 
 * Another feature just for demonstration purposes
 */
-export class Feature2 {
+export class Feature2 extends FeatureBase {
     /** 
     * Example args
     */
-    readonly exampleArg: string;
+    readonly exampleArg: string = "";
     /** 
      * Example output
      *
      *  Control: "Example output"
      */
-    readonly exampleOutput: string;
-
-    /** @internal */
-    readonly _: {
-
-        /**
-        * when constructed from cache, this is the original impression
-        * otherwise it will be the the one associated with the fetch
-        */
-        impression: ImpressionImpl;
-        impressionId: string;
-    }
+    readonly exampleOutput: string = "Example output";
 
     /**
      * Example event
     */
     signalExampleEvent( { data } 
         : {  data : string  } ) : void {
-      Feature2.signalExampleEvent( this._.impression.sessionKeys, this._.impressionId, { data, } );
+            signalInstance(this, "ExampleEvent", arguments[0]);
     }
     /** 
      * Example event
      */
-    static signalExampleEvent( sessionKeys: SessionKeys, impressionId : string,  { data } 
+    static signalExampleEvent( sessionKeys: SessionKeys | Session, impressionId : string,  { data } 
         : {  data : string  } ) : void
-    {
-        const _data = { 
-          id : sessionKeys,
-          feature: "Feature2",
-          event: "ExampleEvent",
-          impressionId: impressionId,
-          args: {  data: data  }
-        };
-      network.sendBeacon(getCausalHeaders(sessionKeys), _data);
+ {
+        signalStatic("Feature2", "ExampleEvent", [...arguments]);
     }
-
-  constructor( 
-    impression: ImpressionImpl, 
-    args: NonNullable<_WireArgs["Feature2"]>, 
-    outputs: Feature2WireOutputs ) {
-    this._ = {impression, impressionId: outputs._impressionId};
-    this.exampleArg = args.exampleArg;
-    if (outputs.exampleOutput !== undefined) {
-        this.exampleOutput = outputs.exampleOutput ?? undefined;
-    } else {
-        this.exampleOutput = "Example output";    }
-
-    bindAllMethods(this);
   }
-}
+
+
+/* eslint-enable */
+
+/** @deprecated */
+export const allFeatureTypes = {
+    RatingBox,
+    ProductInfo,
+    Feature2,
+
+    };
+
 
 /**
  * The arguments defined in the args section of the FDL schema
@@ -200,233 +118,19 @@ export type SessionArgs = {
    deviceId: string;
 };
 
-function sseUrl( s : Partial<SessionArgs> ) {
-  let sseUrl = network.getBaseUrl().replace(
-        /\/?$/,
-        "/sse?id=");
-  if ( s.deviceId != undefined)
-      sseUrl += s.deviceId + "+";
-  return sseUrl;
-}
+/* eslint-disable */
 
-class ImpressionImpl implements Impression<FeatureNames> {
-  /** internal */
-  readonly _: {json: ImpressionJSON<FeatureNames>};
+class SessionEvents {
+  readonly _: { sessionKeys: SessionKeys };
 
-  // Note: There is no impression id declared at this level
-  // The features have impression ids as part of their outputs
-
-  toJSON() {
-    return this._.json;
+  constructor(sessionKeys: SessionKeys) {
+    this._ = { sessionKeys };
   }
-
-  get sessionKeys() {
-    return this._.json.sessionKeys;
-  }
-
-  constructor(impressionJson: ImpressionJSON<FeatureNames>) {
-    this._ = {json: impressionJson};
-    const { wireArgs, wireOutputs } = impressionJson;
-    for (const [featureName, args] of Object.entries(wireArgs) as [
-      keyof _WireArgs,
-      _WireArgs[keyof _WireArgs]
-    ][]) {
-      const output = wireOutputs[featureName];
-
-      let featureHasData;
-      switch (impressionJson.impressionType) {
-        case "error":
-          featureHasData = defaultFlags[featureName];
-          break;
-        case "loading":
-          featureHasData = false;
-          break;
-        case "real":
-          featureHasData = output != "OFF" && output !== undefined;
-          if (output == undefined) {
-            log.warn("undefined or null output for " + featureName + ". Using defaults.");
-            featureHasData = defaultFlags[featureName];            
-          }
-      }
-
-      if (featureHasData) {
-        (this as any)[featureName] = new (allFeatureTypes as any)[featureName]( // eslint-disable-line
-          this,
-          args as any, // eslint-disable-line
-          (output == undefined
-            ? { _impressionId: "errNoOutputs" }
-            : output) as any // eslint-disable-line
-        ) as any; // eslint-disable-line
-      }
-    }
-    bindAllMethods(this);
-  }
-
-  RatingBox?: RatingBox 
-  ProductInfo?: ProductInfo 
-  Feature2?: Feature2 
-
 }
 
-/**
- * Represents the type of a query, both its features and arguments. 
- * 
- * The type signature looks complicated, but it just represents an object that maps the selected feature names to the corresponding feature arguments.
- * This type generally will not be constructed manually, but instead be inferred from the return value of [[queryBuilder]] or [[createQuery]]. 
- * The typing will then cary through to all the other Causal functions like [[useImpression]] and [[requestImpression]].
- *
- * @paramtype The feature to query for
- */
-export type QueryArgs<T extends FeatureNames> = 
-    /**
-    * Wraps a rating box that we can put on various product pages
-    * to collect ratings from our users
-    */
-    & ("RatingBox" extends T ?   
-      { RatingBox : 
-          {  product : string  } } : unknown ) 
-    /**
-    * An empty feature to use only as a kill switch
-    */
-    & ("ProductInfo" extends T ?   
-      { ProductInfo : 
-          { _ignore_forceExcessPropertyCheck?: undefined } } : unknown ) 
-    /**
-    * Another feature just for demonstration purposes
-    */
-    & ("Feature2" extends T ?   
-      { Feature2 : 
-          {  exampleArg : string  } } : unknown ) 
+/* eslint-enable */
 
-      
-
-/**
- * Create a query to use with [[requestImpression]] or [[useImpression]].
- * 
- * @typeparam The names of the features to query for.
- * @param args The arguments for each feature in T.
- * @return Query to use with [[requestImpression]] or [[useImpression]].
- */ 
-export function createQuery<T extends FeatureNames>(
-  args: QueryArgs<T>
-): Query<T> {
-  const query = new Query<T>();
-  const _args = args as unknown as QueryArgs<FeatureNames>; // cast needed for older versions of typescript
-   
-  if (_args.RatingBox !== undefined)
-    query.getRatingBox(_args.RatingBox);
-  if (_args.ProductInfo !== undefined)
-    query.getProductInfo();
-  if (_args.Feature2 !== undefined)
-    query.getFeature2(_args.Feature2);
-  return query;
-}
-
-/** 
-* Features to query, along with their arguments.
-*
-* A query is created by using either [[queryBuilder]] or [[createQuery]].
-*
-* A query is executed by calling either [[requestImpression]] or [[useImpression]].
-*
-*/
-export class Query<T extends FeatureNames>{
-    /** 
-    * Wraps a rating box that we can put on various product pages
-    * to collect ratings from our users
-    */
-    getRatingBox( { product } 
-      : {  product : string  } )
-        : Query<T | "RatingBox"> {
-        this._.wireArgs['RatingBox'] = { product: product, }
-        return this;
-    }
-    /** 
-    * An empty feature to use only as a kill switch
-    */
-    getProductInfo()
-        : Query<T | "ProductInfo"> {
-        this._.wireArgs['ProductInfo'] = { }
-        return this;
-    }
-    /** 
-    * Another feature just for demonstration purposes
-    */
-    getFeature2( { exampleArg } 
-      : {  exampleArg : string  } )
-        : Query<T | "Feature2"> {
-        this._.wireArgs['Feature2'] = { exampleArg: exampleArg, }
-        return this;
-    }
-
-    /** @internal **/
-    readonly _: {
-        wireArgs: _WireArgs;
-        _?: T; // T must be in the type for inference to work correctly
-    } = {
-        wireArgs: {},
-    };
-
-    constructor() {
-        bindAllMethods(this);
-    }
-}
-
-/**
- * @internal
- * Do not use - only exported for testing
- */
-export type _WireArgs = {
-    RatingBox?:  { 
-      product: string
-       },
-    ProductInfo?:       Record<string, never>,
-    Feature2?:  { 
-      exampleArg: string
-       },
-
-};
-
-const featureNames = [
-    "RatingBox",
-    "ProductInfo",
-    "Feature2",
-] as const;
-
-type FeatureNamesNoArgs =
-    
-        | "ProductInfo"
-
-
-type FeatureNames = typeof featureNames[number];
-
-
-/**
- * An object of the form `{"FeatureName": FeatureType}` for all features
- * Useful as an object to autocomplete off of.
- */
-export const allFeatureTypes = {
-    RatingBox,
-    ProductInfo,
-    Feature2,
-    };
-
-/**
- * @internal
- * Do not use - only exported for testing
- */
-export type _WireOutputs = {
-    session?: SessionArgs;
-    RatingBox?:RatingBoxWireOutputs | "OFF";
-    ProductInfo?:ProductInfoWireOutputs | "OFF";
-    Feature2?:Feature2WireOutputs | "OFF";
-}
-
-type SessionKeys = {
-    deviceId?: string
-    };
-
-function sessionKeys( s : Partial<SessionArgs> ) : SessionKeys {
+function sessionKeys( s : Partial<SessionArgs> ) {
   return {
     deviceId : s?.deviceId,
   };
@@ -441,34 +145,65 @@ function getCausalHeaders( s : Partial<SessionArgs>): Record<string, string> {
     };
 }
 
-type SessionEvents = {       }
+function sseUrl( s : Partial<SessionArgs> ) {
+  let sseUrl = network.getBaseUrl().replace(
+        /\/?$/,
+        "/sse?id=");
+  if ( s.deviceId != undefined)
+      sseUrl += s.deviceId + "+";
+  return sseUrl;
+}
+
+/* eslint-disable */
+
+/** 
+* Features to query, along with their arguments.
+*
+* A query is created by using either [[queryBuilder]] or [[createQuery]].
+*
+* A query is executed by calling either [[requestImpression]] or [[useImpression]].
+*
+*/
+class Query<T extends FeatureNames>{
+    /** 
+    * Wraps a rating box that we can put on various product pages
+    * to collect ratings from our users
+    */
+    getRatingBox( { product } 
+      : {  product : string  } )
+        : Query<T | "RatingBox"> {
+        return this;
+    }
+    /** 
+    * An empty feature to use only as a kill switch
+    */
+    getProductInfo()
+        : Query<T | "ProductInfo"> {
+        return this;
+    }
+    /** 
+    * Another feature just for demonstration purposes
+    */
+    getFeature2( { exampleArg } 
+      : {  exampleArg : string  } )
+        : Query<T | "Feature2"> {
+        return this;
+    }
 
 
-type Impression<T extends FeatureNames> =
-    & ("RatingBox" extends T ? { RatingBox?:RatingBox } : unknown)
-    & ("ProductInfo" extends T ? { ProductInfo?:ProductInfo } : unknown)
-    & ("Feature2" extends T ? { Feature2?:Feature2 } : unknown)
-    & { sessionKeys: SessionKeys }
-    & { toJSON(): ImpressionJSON<T> }
-    & { _: {json: ImpressionJSON<T>} }
-    & SessionEvents
+    readonly _: {
+        _?: T; // T must be in the type for inference to work correctly
+        wireArgs: Record<string, unknown>;
+    } = {
+        wireArgs: {},
+    };
 
-/**
- * @internal
- * Do not use - only exported for testing
- */
-export type _WireFlags = {
-    RatingBox: boolean;
-    ProductInfo: boolean;
-    Feature2: boolean;
+    constructor() {
+        bindAllMethods(this);
+    }
+}
 
-};
-
-type Flags<T extends FeatureNames> = 
-    & ("RatingBox" extends T ? { RatingBox: boolean } : unknown )
-    & ("ProductInfo" extends T ? { ProductInfo: boolean } : unknown )
-    & ("Feature2" extends T ? { Feature2: boolean } : unknown )
-
+/* eslint-enable */
 
 /**
  * The state of the feature flags when the FDL was compiled to this file.
@@ -477,31 +212,25 @@ export const defaultFlags: Flags<FeatureNames> = {
     RatingBox: true,
     ProductInfo: true,
     Feature2: true,
+
 };
 
-export class Session implements SessionEvents {
-  /**
-   * Construct a session from partial session arguments. Note: To use this, you need to have the impression server configured to accept partial session arguments
-   *
-   * @param deviceId
-   * @param req
-   * @returns
-   */
+export class Session extends SessionEvents {
+
   static fromDeviceId( deviceId: string, req?: IncomingMessage): Session {
       const sessionArgs: Partial<SessionArgs> = { deviceId:deviceId };
       return new Session(sessionArgs as SessionArgs, req);
   }
 
-
-  //#endregion
-  ///////////////////////////////////////////////////////////////////////////////
+//#endregion
+///////////////////////////////////////////////////////////////////////////////
 
   /** @internal */
   _: {
     args: Partial<SessionArgs>;
+    sessionKeys: SessionKeys;
     implicitArgs: ImplicitArgs;
     cache: _Cache;
-    activeVariants: ActiveVariant[];
     originator: "ssr" | "csr";
     hydrating: boolean;
     hydrationKeys: {
@@ -518,19 +247,18 @@ export class Session implements SessionEvents {
   };
 
   constructor(args: SessionArgs, req?: IncomingMessage) {
+    super(sessionKeys(args));
+
     const _backingStore = makeBackingStore(
       misc.ssr ? cacheOptions.ssrCacheType : cacheOptions.csrCacheType,
       cacheOptions.makeCustomStore
     );
-    const _cache = new _Cache(args, _backingStore, cacheOptions, {
-      invalidateVariants: () => (this.activeVariants.length = 0),
-    });
+    const _cache = new _Cache(args, _backingStore, cacheOptions);
 
     this._ = {
       args,
       cache: _cache,
       implicitArgs: {},
-      activeVariants: [],
       originator: misc.ssr ? "ssr" : "csr",
       hydrating: false,
       hydrationKeys: [],
@@ -542,6 +270,7 @@ export class Session implements SessionEvents {
         errorsReceived: 0,
         errorsAndWarnings: [],
       },
+      sessionKeys: sessionKeys(args),
     };
 
     if (req) this.addIncomingMessageArgs(req);
@@ -570,10 +299,19 @@ export class Session implements SessionEvents {
   static lastKeepAlive = 0;
 
   /**
-   * The currently active experiment variants
+   * The currently active experiment variants. This is intended for reporting information to other
+   * systems. It should *not* be used as an input for any display or logic on your site.
    */
   get activeVariants(): ActiveVariant[] {
-    return this._.activeVariants;
+    return (this._.cache.get(activeVariantsKey) ?? []) as ActiveVariant[];
+  }
+
+  /**
+   * All the features that have been requested so far. This is intended for reporting information to other
+   * systems. It should *not* be used as an input for any display or logic on your site.
+   */
+  get requestedFeatures(): RequestedFeature[] {
+    return (this._.cache.get(requestedFeaturesKey) ?? []) as RequestedFeature[];
   }
 
   /** Returns information about this sessions communication with the impression server */
@@ -670,8 +408,6 @@ export class Session implements SessionEvents {
     // creating the session will (correctly) clear the cache
     // it will also expire the cache if the cache is too old
     const session = new Session(json.sessionArgs as SessionArgs);
-    session._.activeVariants = json.activeVariants;
-    misc.onUpdateActiveVariants(json.activeVariants);
     session._.originator = json.originator;
 
     if (_options.alwaysDelExistingCache) session._.cache.backingStore.delAll();
@@ -797,70 +533,12 @@ export class Session implements SessionEvents {
    *
    * @typeparam Type information for the request and returned impression. Typically inferred from the query.
    * @param query Features to request and their arguments.
-   * @param sessionArgs The session args as defined in the FDL
-   * @param impressionId The impression id.
    *
    */
   async requestCacheFill<Q extends Query<FeatureNames>>(
     query: Q
   ): Promise<void> {
     await requestImpression(this, query, undefined);
-  }
-
-  /**
-   * @deprecated Please use [[requestImpression]].
-   * Async function to get the on/off flags associated with a feature.
-   *
-   * @returns A promise that will resolve with the current set of feature flags.
-   * On an error, it will return the default flags and an additional informational error value.
-   *
-   */
-  async requestFlags(): Promise<{
-    flags: Flags<FeatureNames>;
-    error?: ErrorTypes;
-  }> {
-    const args = this._.args;
-
-    const cache = this._.cache;
-    const cachedFlags = cache.flags();
-    if (cachedFlags != undefined) return { flags: cachedFlags };
-
-    const {
-      flags: responseFlags,
-      error,
-      warning,
-      featuresRequested,
-      featuresReceived,
-    } = await iserverFetch({
-      sessionArgs: args,
-      implicitArgs: this._.implicitArgs,
-      options: ["flags"],
-    });
-
-    this._.commSnapshot.fetches += 1;
-    this._.commSnapshot.featuresRequested += featuresRequested;
-    this._.commSnapshot.featuresReceived += featuresReceived;
-    if (error) {
-      this._.commSnapshot.errorsReceived += 1;
-      this._.commSnapshot.errorsAndWarnings.unshift(error);
-    }
-    if (warning) {
-      this._.commSnapshot.errorsReceived += 1;
-      this._.commSnapshot.errorsAndWarnings.unshift(warning);
-    }
-    this._.commSnapshot.errorsAndWarnings.splice(5);
-
-    if (!error) {
-      if (responseFlags == undefined)
-        log.warn("no error requesting flags, but no responseFlags");
-      else {
-        cache.setFlags(responseFlags);
-      }
-    }
-
-    // cache.flags() is very likely to be undefined, but on the off
-    // chance a different request completed, including here
-    return { flags: responseFlags ?? cache.flags() ?? defaultFlags, error };
   }
 
   /**
@@ -905,6 +583,277 @@ export class Session implements SessionEvents {
   }
 }
 
+type OmitNever<T> = { [K in keyof T as T[K] extends never ? never : K]: T[K] };
+type Writeable<T> = { -readonly [P in keyof T]: T[P] };
+type UndefinedToNull<T> = {
+  [P in keyof T]-?: undefined extends T[P] ? T[P] | null : T[P];
+};
+
+type FeatureNames = keyof typeof allFeatureTypes;
+type SessionKeys = Partial<ReturnType<typeof sessionKeys>>;
+type Flags<T extends FeatureNames> = { [P in T]: boolean };
+type _WireFlags = typeof defaultFlags;
+
+type Impression<T extends FeatureNames> = {
+  [P in keyof Pick<
+    ImpressionImpl,
+    T | "toJSON" | "sessionKeys"
+  >]: ImpressionImpl[P];
+} & SessionEvents;
+
+/**
+ * Represents the type of a query, both its features and arguments.
+ *
+ * This type generally will not be constructed manually, but instead be inferred from the return value of [[queryBuilder]] or [[createQuery]].
+ *
+ * @paramtype The feature to query for
+ */
+type QueryArgs<T extends FeatureNames> = {
+  [F in T]: Parameters<Query<T>[`get${F}`]>[number] | Record<string, never>;
+};
+
+function signalInstance(feature: FeatureBase, event: string, args: unknown) {
+  // this is default feature, can't really signal
+  if (feature._.impression == undefined) return;
+  if (feature._.impressionId == undefined) return;
+
+  signal(
+    feature.featureName,
+    event,
+    feature._.impression.sessionKeys,
+    feature._.impressionId,
+    args
+  );
+}
+
+function signalStatic(feature: string, event: string, argsArr: unknown[]) {
+  const arg0 = argsArr[0];
+  const sk =
+    arg0 instanceof Session
+      ? sessionKeys(arg0.args())
+      : sessionKeys(arg0 as SessionArgs);
+  const impressionId = argsArr[1] as string;
+  const args = argsArr[2];
+
+  signal(feature, event, sk, impressionId, args);
+}
+
+function signalSession(
+  event: string,
+  session: Session | SessionKeys | SessionEvents,
+  args: unknown
+): void {
+  const sk =
+    session instanceof Session
+      ? sessionKeys(session.args())
+      : session instanceof SessionEvents
+      ? sessionKeys(session._.sessionKeys)
+      : sessionKeys(session);
+
+  if (session instanceof Session) {
+    if (session._.commSnapshot.fetches == 0) {
+      log.info(
+        "Possibly signaling a session event without requesting an impression. " +
+          "If the impression was requested with another Session with the same args, you can ignore this message."
+      );
+    }
+  }
+  signal(undefined, event, sk, undefined, args);
+}
+
+/**
+ * Create a query to use with [[requestImpression]] or [[useImpression]].
+ *
+ * @typeparam The names of the features to query for.
+ * @param args The arguments for each feature in T.
+ * @return Query to use with [[requestImpression]] or [[useImpression]].
+ */
+export function createQuery<T extends FeatureNames>(
+  args: QueryArgs<T>
+): Query<T> {
+  const query = new Query();
+  query._.wireArgs = args;
+  return query as Query<T>;
+}
+
+type FeatureNamesNoArgs = keyof OmitNever<{
+  [F in FeatureNames]: Parameters<Query<F>[`get${F}`]>[0] extends undefined
+    ? F
+    : never;
+}>;
+
+/** This type represents the common portion of all features outputs  */
+type WireFeatureCommon = {
+  /** The imperssion id for this feature impression */
+  _impressionId: string;
+
+  /** Any variants that should be turned on if this feature goes from cacheOnly to a real impression */
+  _variants?: WireVariant[];
+};
+
+type AllFeatureClasses = {
+  [F in keyof typeof allFeatureTypes]: InstanceType<typeof allFeatureTypes[F]>;
+};
+
+type AFeatureOutput<F extends FeatureNames> = {
+  // eslint-disable-next-line
+  [P in keyof AllFeatureClasses[F]]: AllFeatureClasses[F][P] extends Function
+    ? never
+    : AllFeatureClasses[F][P];
+};
+
+type FeatureOutputs = {
+  [F in FeatureNames]?: Omit<
+    OmitNever<Writeable<UndefinedToNull<AFeatureOutput<F>>>>,
+    "_" | "featureName"
+  >;
+};
+
+/**
+ * @internal
+ * Do not use - only exported for testing
+ */
+export type _WireArgs = Partial<QueryArgs<FeatureNames>>;
+
+/**
+ * @internal
+ * Do not use - only exported for testing
+ */
+export type _WireOutputs = { session?: SessionArgs } & Partial<{
+  [P in FeatureNames]: (FeatureOutputs[P] & WireFeatureCommon) | "OFF";
+}>;
+
+function signal(
+  feature: string | undefined,
+  event: string,
+  sessionKeys: SessionKeys,
+  impressionId: string | undefined,
+  args: unknown
+): void {
+  const _data = {
+    id: sessionKeys,
+    feature,
+    event,
+    impressionId,
+    args,
+  };
+  network.sendBeacon(getCausalHeaders(sessionKeys), _data);
+}
+
+// ImpressionBaseType and ImpressionBase are a bit of trickery
+// to tell the TS compiler that ImpressionImp really does
+// potentially have each of the feature classes as a member
+type ImpressionBaseType = Partial<{
+  [F in keyof typeof allFeatureTypes]: InstanceType<typeof allFeatureTypes[F]>;
+}> &
+  SessionEvents;
+
+interface ImpressionBase {
+  new (sessionKeys: SessionKeys): ImpressionBaseType;
+}
+
+class ImpressionImpl extends (SessionEvents as ImpressionBase) {
+  /** internal */
+  readonly _: { sessionKeys: SessionKeys; json: ImpressionJSON };
+
+  // Note: There is no impression id declared at this level
+  // The features have impression ids as part of their outputs
+
+  toJSON() {
+    return this._.json;
+  }
+
+  get sessionKeys() {
+    return this._.json.sessionKeys;
+  }
+
+  constructor(impressionJson: ImpressionJSON) {
+    super(impressionJson.sessionKeys);
+    this._ = { json: impressionJson, sessionKeys: impressionJson.sessionKeys };
+    const { wireOutputs, wireArgs } = impressionJson;
+
+    for (const featureName of Object.keys(wireArgs ?? {}) as (
+      | FeatureNames
+      | "Session"
+      | "session"
+    )[]) {
+      if (featureName == "Session" || featureName == "session") continue;
+      const output = wireOutputs[featureName];
+
+      let shouldCreateFeature: boolean;
+      switch (impressionJson.impressionType) {
+        case "error":
+          shouldCreateFeature = defaultFlags[featureName];
+          break;
+        case "loading":
+          shouldCreateFeature = false;
+          break;
+        case "real":
+          shouldCreateFeature = output != "OFF";
+          if (output == undefined) {
+            log.info(
+              "undefined or null output for " +
+                featureName +
+                ". Using defaults."
+            );
+            shouldCreateFeature = defaultFlags[featureName];
+          }
+      }
+
+      if (shouldCreateFeature) {
+        const constructor = allFeatureTypes[featureName as FeatureNames];
+        const feature = new constructor() as FeatureBase;
+        feature.featureName = featureName;
+        bindAllMethods(feature);
+
+        const featureOutputs = wireOutputs[featureName] as
+          | (WireFeatureCommon & Record<string, unknown>)
+          | undefined;
+
+        const featureArgs = wireArgs[featureName] as
+          | Record<string, unknown>
+          | undefined;
+
+        const impressionId = featureOutputs?._impressionId;
+        if (featureOutputs) {
+          feature._.impression = this;
+          feature._.impressionId = impressionId;
+        }
+
+        // if proxies are not supported (very old browswers), just return the defaults
+        if (typeof Proxy == "function") {
+          const handler = {
+            get(
+              target: typeof feature,
+              prop: string,
+              receiver: typeof feature
+            ) {
+              // very hard to correctly proxy signal handler b/c of default parameters
+              if (prop.startsWith("signal")) {
+                return Reflect.get(target, prop, receiver);
+              }
+
+              // return args value
+              if (featureArgs?.[prop] !== undefined) {
+                return featureArgs[prop];
+              }
+
+              // return impression value
+              // if not available the default was the value initialized in the class
+              if (featureOutputs?.[prop] !== undefined) {
+                return featureOutputs[prop] ?? undefined; // null -> undefined (set so do not get default value)
+              }
+              return Reflect.get(target, prop, receiver);
+            },
+          };
+          this[featureName] = new Proxy(feature, handler) as never;
+        }
+      }
+    }
+    bindAllMethods(this);
+  }
+}
+
 // eslint-disable-next-line
 function bindAllMethods(obj: any) {
   // this is used in exported class constructors
@@ -924,7 +873,6 @@ type ImplicitArgs = {
   clientType?: string;
 };
 
-type QueryNakedType<Q> = Q extends Query<infer T> ? T : never;
 type ImpressionType<Q> = Q extends Query<infer T> ? Impression<T> : never;
 type FlagsType<Q> = Q extends Query<infer T> ? Flags<T> : never;
 
@@ -939,26 +887,28 @@ async function requestImpression<Q extends Query<FeatureNames>>(
   error?: ErrorTypes;
 }> {
   const cache = session._.cache;
+  const wireArgs = query._.wireArgs;
 
-  const { cachedImpression, cachedFlags } = getCachedImpression<
-    QueryNakedType<Q>
-  >(session, query._.wireArgs);
+  const { cachedImpression, cachedFlags } = getCachedImpression(
+    session,
+    wireArgs
+  );
 
   if (cachedImpression != undefined && cachedFlags != undefined) {
     let impression = cachedImpression;
     if (impressionId != undefined) {
-      // not a cache fill
-      updateSessionVariants(session, cachedImpression);
+      // impressionId != undefined means this is not a cache fill request
+      updateSessionVariants(session, undefined, impressionId, cachedImpression);
       sendImpressionBeacon(session, cachedImpression, impressionId);
       impression = updateImpressionIds(
         cachedImpression,
         impressionId,
-        query._.wireArgs
+        wireArgs
       );
     }
 
     return {
-      impression: impression as ImpressionType<Q>,
+      impression: impression as unknown as ImpressionType<Q>,
       flags: cachedFlags as FlagsType<Q>, // cast needed for older version of TS
     };
   }
@@ -978,7 +928,7 @@ async function requestImpression<Q extends Query<FeatureNames>>(
     impressionId,
     sessionArgs: session._.args,
     implicitArgs: session._.implicitArgs,
-    wireArgs: query._.wireArgs,
+    wireArgs: wireArgs,
   });
 
   session._.commSnapshot.fetches += 1;
@@ -997,32 +947,28 @@ async function requestImpression<Q extends Query<FeatureNames>>(
   // not needed for the impression stuff, but might as well cache them since we got them
   if (flags) cache.setFlags(flags);
 
-  if (activeVariants) {
-    session._.activeVariants = activeVariants;
-
-    // this is a cache fill, no need to signal the callback
-    if (impressionId != undefined) misc.onUpdateActiveVariants(activeVariants);
-  }
+  if (activeVariants)
+    updateSessionVariants(session, activeVariants, impressionId, impression);
 
   if (impression != undefined) {
     cache.setOutputs(
-      query._.wireArgs,
+      wireArgs,
       impression.toJSON().wireOutputs,
       impressionId == undefined
     );
     return {
-      impression: impression as ImpressionType<Q>,
+      impression: impression as unknown as ImpressionType<Q>,
       flags: flagsFromImpression(impression) as unknown as FlagsType<Q>, // cast needed for older version of TS
       error,
     };
   } else {
     const errImpression = errorImpression(session, "Fetch Failure", {
-      wireArgs: query._.wireArgs,
-    }) as ImpressionType<Q>;
+      wireArgs,
+    });
 
     return {
-      impression: errImpression,
-      flags: flagsFromImpression(errImpression),
+      impression: errImpression as unknown as ImpressionType<Q>,
+      flags: flagsFromImpression(errImpression) as FlagsType<Q>,
       error: error ?? {
         errorType: "unknown",
         message: "unknown error",
@@ -1116,36 +1062,30 @@ function sessionArgsMatch(
   );
 }
 
-function flagsFromImpression(impression?: undefined): undefined;
-
-function flagsFromImpression<Q>(impression: ImpressionType<Q>): FlagsType<Q>;
-
-function flagsFromImpression<Q>(impression: ImpressionImpl): FlagsType<Q>;
-
-function flagsFromImpression<T extends FeatureNames>(
-  impression?: Impression<T>
-): Flags<T> | undefined {
+function flagsFromImpression(
+  impression?: ImpressionImpl
+): Flags<FeatureNames> | undefined {
   if (impression == undefined) return undefined;
 
   const wireArgs = impression._.json.wireArgs;
   const wireOutputs = impression._.json.wireOutputs;
-  const flags: Partial<Flags<FeatureNames>> = {};
-  for (const k of Object.keys(wireArgs)) {
+  const flags: Record<string, boolean> = {};
+  for (const k of Object.keys(wireArgs ?? {})) {
     const v = wireOutputs[k as FeatureNames];
     const key = k as FeatureNames;
     if (v === undefined) flags[key] = defaultFlags[key];
     else flags[key] = v != "OFF";
   }
 
-  return flags as Flags<T>;
+  return flags as Flags<FeatureNames>;
 }
 
-function getCachedImpression<T extends FeatureNames>(
+function getCachedImpression(
   session: Session,
   wireArgs: _WireArgs
 ): {
-  cachedImpression?: Impression<T>;
-  cachedFlags?: Flags<T>;
+  cachedImpression?: ImpressionImpl;
+  cachedFlags?: Flags<FeatureNames>;
   metadata: Map<string, RequestMetadata>;
 } {
   const cache = session._.cache;
@@ -1154,12 +1094,12 @@ function getCachedImpression<T extends FeatureNames>(
   if (outputs == undefined) return { metadata: new Map() };
   const { wireOutputs: cachedOutputs, metadata } = outputs;
 
-  const cachedImpression: Impression<T> = toImpression({
+  const cachedImpression = toImpressionImpl({
     impressionType: "real", // only cache real impressions, not errors or loads
     wireArgs,
     sessionKeys: sessionKeys(session._.args),
     wireOutputs: cachedOutputs,
-  }) as Impression<T>;
+  });
 
   const cachedFlags = flagsFromImpression(cachedImpression);
 
@@ -1170,31 +1110,29 @@ function getCachedImpression<T extends FeatureNames>(
   };
 }
 
-function loadingImpression<T extends FeatureNames>(
-  session: Session
-): Impression<T> {
+function loadingImpression(session: Session): ImpressionImpl {
   const impression = new ImpressionImpl({
     impressionType: "loading",
     sessionKeys: sessionKeys(session._.args),
     wireArgs: {},
-    wireOutputs: {} as _WireOutputs,
+    wireOutputs: {},
   });
-  return impression as Impression<T>;
+  return impression;
 }
 
-function errorImpression<T extends FeatureNames>(
+function errorImpression(
   session: Session | undefined,
   reason: string,
-  { wireArgs }: Pick<ImpressionJSON<T>, "wireArgs">
-): Impression<T> {
+  { wireArgs }: Pick<ImpressionJSON, "wireArgs">
+): ImpressionImpl {
   const impression = new ImpressionImpl({
     sessionKeys: session ? sessionKeys(session._.args) : ({} as SessionKeys),
     impressionType: "error",
     reason,
     wireArgs: cleanWireArgs(wireArgs),
-    wireOutputs: {} as _WireOutputs,
+    wireOutputs: {},
   });
-  return impression as unknown as Impression<T>;
+  return impression;
 }
 
 /** Type of cache to use */
@@ -1518,6 +1456,8 @@ const cacheVersion = 1;
 const sseInfoKey = "sseInfo";
 const cacheInfoKey = "cacheInfo";
 const flagsKey = "flags";
+const activeVariantsKey = "activeVariants";
+const requestedFeaturesKey = "activeFeatures";
 
 const causalRegisteredKey = "_causal_registered";
 
@@ -1550,15 +1490,11 @@ export class _Cache {
     hits: Map<string, number>;
     misses: Map<string, number>;
   } = { hits: new Map(), misses: new Map() };
-  invalidateVariants: () => void;
 
   constructor(
     sessionArgs: Partial<SessionArgs> | undefined,
     backingStore: _BackingStore,
-    options: Required<CacheOptions>,
-    callbacks: {
-      invalidateVariants: () => void;
-    }
+    options: Required<CacheOptions>
   ) {
     const {
       outputExpirySeconds,
@@ -1571,7 +1507,6 @@ export class _Cache {
     this.useServerSentEvents = useServerSentEvents;
     this.sessionCacheExpirySeconds = sessionCacheExpirySeconds;
     this.sessionArgs = sessionArgs;
-    this.invalidateVariants = callbacks.invalidateVariants;
 
     if (sessionArgs == undefined) return;
 
@@ -1805,7 +1740,7 @@ export class _Cache {
     return value as Flags<FeatureNames>;
   }
 
-  setFlags(flags: Flags<FeatureNames>) {
+  setFlags(flags: _WireFlags) {
     if (!this.testAndTouchSession()) return;
     this.set(flagsKey, flags);
   }
@@ -1850,7 +1785,7 @@ export class _Cache {
     if (sessionOutput == undefined) {
       allCached = false;
       this.addCacheMiss("session");
-      this.addCacheMiss(...Object.keys(wireArgs));
+      this.addCacheMiss(...Object.keys(wireArgs ?? {}));
     } else {
       outputs["session"] = sessionOutput.value as SessionArgs;
 
@@ -1908,7 +1843,7 @@ export class _Cache {
           expires: nextExpiry,
         });
       } else {
-        const wireArg = wireArgs[featureName];
+        const wireArg = wireArgs[featureName as FeatureNames];
         if (wireArg != undefined) {
           if (!(featureName as string).startsWith(nonFeaturePrefix))
             this.setFeature(featureName, wireArg, {
@@ -1954,7 +1889,6 @@ export class _Cache {
 
     const mevt: MessageEvent = evt as MessageEvent;
     _flushCount++;
-    this.invalidateVariants();
     this.deleteAll(false);
     this.set(sseInfoKey, mevt.data);
   }
@@ -2086,9 +2020,10 @@ export type _FetchResponse = {
 };
 
 /**
- * This represents an active experiment variant within Causal.
+ * This represents an active experiment variant within Causal. This is intended for reporting information to other
+ * systems. It should *not* be used as an input for any display or logic on your site.
  *
- * Active variants are available on the [[Session.activeVariants]]
+ * Active variants are available on the [[Session.activeVariants]] property and the [[CausalOptions.onImpression]] callback
  *
  */
 export type ActiveVariant = {
@@ -2106,10 +2041,15 @@ export type ActiveVariant = {
 };
 
 /**
- * A function that wil get called with various reporting information
- * such as all the active experiment/variants in effect
+ * This represents the state of all features requested so far. This is intended for reporting information to other
+ * systems. It should *not* be used as an input for any display or logic on your site.
+ *
+ * RequestedFeature is on the [[Session.requestedFeatures]] property and the [[CausalOptions.onImpression]] callback
  */
-export type ReportFn = (data: { variants: ActiveVariant[] }) => void;
+export type RequestedFeature = {
+  featureName: string;
+  isOn: boolean;
+};
 
 /**
  * Causal configuration options that can be passed to [[initCausal]]
@@ -2160,9 +2100,22 @@ export type CausalOptions = {
   logIServerCommErrors?: boolean;
 
   /**
-   * callback called whenever the active variants are updated
+   * @deprecated
+   * Callback called whenever the active variants are updated. This is intended for reporting information to other
+   * systems. It should *not* be used as an input for any display or logic on your site.
    */
   onUpdateActiveVariants?: (variants: ActiveVariant[]) => void;
+
+  /**
+   * Callback called when an impression is returned. This is intended for reporting information to other
+   * systems. It should *not* be used as an input for any display or logic on your site.
+   */
+  onImpression?: (info: {
+    newVariants: ActiveVariant[];
+    allVariants: ActiveVariant[];
+    newFeatures: RequestedFeature[];
+    allFeatures: RequestedFeature[];
+  }) => void;
 };
 
 /**
@@ -2251,7 +2204,10 @@ type MiscOptions = Required<Pick<CausalDebugOptions, "ssr">> &
   Required<
     Pick<
       CausalOptions,
-      "logIServerDetails" | "logIServerCommErrors" | "onUpdateActiveVariants"
+      | "logIServerDetails"
+      | "logIServerCommErrors"
+      | "onUpdateActiveVariants"
+      | "onImpression"
     >
   >;
 
@@ -2262,6 +2218,9 @@ const defaultMisc: MiscOptions = {
   logIServerDetails: false,
   logIServerCommErrors: true,
   onUpdateActiveVariants: () => {
+    // noop
+  },
+  onImpression: () => {
     // noop
   },
 };
@@ -2337,7 +2296,12 @@ export function initCausal(
   misc.onUpdateActiveVariants =
     options?.onUpdateActiveVariants ??
     (() => {
-      /*noop*/
+      // noop
+    });
+  misc.onImpression =
+    options?.onImpression ??
+    (() => {
+      // noop
     });
 
   log = { ...defaultLog };
@@ -2445,7 +2409,27 @@ export type SelectFeatures<T extends FeatureNames> = T;
  * @return Query to use with [[requestImpression]] or [[useImpression]].
  */
 export function queryBuilder(): Query<never> {
-  return new Query();
+  const query = new Query();
+
+  // if proxies are not supported (very old browswers), we won't call the impression serer
+  // default values will be provided for all features
+  if (typeof Proxy != "function") return query as Query<never>;
+
+  const handler = {
+    get(target: typeof query, prop: string, receiver: typeof query) {
+      if (prop.startsWith("get")) {
+        const feature = prop.slice(3) as FeatureNames;
+        const getter = (args: never) => {
+          target._.wireArgs[feature] = args ?? {};
+          return receiver;
+        };
+        return getter;
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  };
+
+  return new Proxy(query, handler) as Query<never>;
 }
 
 /**
@@ -2460,13 +2444,8 @@ export const qb = queryBuilder;
  * JSON format for an impression.
  * This can be safely serialized to JSON with functions like `JSON.stringify()`.
  * Use the function [[toImpression]] to convert back to an impression.
- *
- * @typeparam T Type information for the impression. Use the same type when converting back to an impression with [[toImpression]].
  */
-export type ImpressionJSON<T extends FeatureNames> = {
-  /** internal */
-  readonly _?: T; // T must be in the type to have proper inference
-
+export type ImpressionJSON = {
   /** @internal */
   sessionKeys: SessionKeys;
 
@@ -2486,19 +2465,26 @@ export type ImpressionJSON<T extends FeatureNames> = {
 /**
  * Convert a [[ImpressionJSON]] back to an impression.
  */
-export function toImpression<T extends FeatureNames>({
+
+export function toImpression<T extends FeatureNames>(
+  impressionJson: ImpressionJSON
+): ImpressionType<Query<T>> {
+  return toImpressionImpl(impressionJson) as Impression<T>;
+}
+
+export function toImpressionImpl({
   impressionType,
   sessionKeys,
   wireArgs,
   wireOutputs: outputs,
-}: ImpressionJSON<T>): ImpressionType<Query<T>> {
+}: ImpressionJSON): ImpressionImpl {
   const impression = new ImpressionImpl({
     impressionType,
     sessionKeys,
     wireArgs,
     wireOutputs: outputs as _WireOutputs,
   });
-  return impression as ImpressionType<Query<T>>;
+  return impression;
 }
 
 type Variant = {
@@ -2527,7 +2513,7 @@ type WireVariant = {
  * @internal
  * Do not use - only exported for testing
  */
-export type IServerResponse = _WireOutputs & {
+export type _IServerResponse = _WireOutputs & {
   _flags: _WireFlags;
   _variants?: WireVariant[];
   errors?: Partial<Record<FeatureNames, string>>;
@@ -2577,7 +2563,7 @@ async function iserverFetch({
   wireArgs?: _WireArgs;
 }): Promise<{
   impression?: ImpressionImpl;
-  flags?: Flags<FeatureNames>;
+  flags?: _WireFlags;
   error?: ErrorTypes;
   warning?: ErrorTypes;
   activeVariants?: ActiveVariant[];
@@ -2696,9 +2682,9 @@ async function iserverFetch({
       };
     }
 
-    let response = undefined;
+    let response;
     try {
-      response = (await result.json()) as IServerResponse | undefined;
+      response = (await result.json()) as _IServerResponse | undefined;
 
       if (misc.logIServerDetails) log.info("fetch...json() response", response);
 
@@ -2897,74 +2883,158 @@ function sendImpressionBeacon(
 
 function updateSessionVariants(
   session: Session,
-  impression: ImpressionImpl
+  iserverVariants: ActiveVariant[] | undefined,
+  impressionId: string | undefined,
+  impression: ImpressionImpl | undefined
 ): void {
+  if (impressionId == undefined) {
+    // no need to update active variants on a cache fill
+    return;
+  }
+
+  if (impression == undefined) {
+    // nothing to do
+    return;
+  }
+
   const outputs = impression._.json.wireOutputs;
   const wireArgs = impression._.json.wireArgs;
 
-  // this will hold all variants that should now be active
-  const variantIdToVariant = new Map<string, Variant>();
+  /* --- update requested features --- */
+  const prevFeatures = (session._.cache.get(requestedFeaturesKey) ??
+    []) as RequestedFeature[];
+
+  const nameToPrevFeature = new Map(
+    prevFeatures.map((f) => [f.featureName, f])
+  );
+
+  const nameToFeature = new Map<string, RequestedFeature>();
 
   Object.entries(outputs).forEach(([featureName, _output]) => {
     const output = _output as _WireOutputs[keyof Omit<_WireOutputs, "session">];
-    const args = (wireArgs as Record<string, unknown>)[featureName];
-
-    if (featureName != "session" && output != "OFF" && output != undefined) {
-      const entry = session._.cache.getFeature(featureName, args);
-      if (entry && entry.impressionCount == 0) {
-        for (const wireVariant of output._variants ?? []) {
-          const id = wireVariant.variant?.id ?? wireVariant.id;
-          if (variantIdToVariant.get(id) == undefined)
-            variantIdToVariant.set(id, variantFromWire(wireVariant));
-        }
-      }
-    }
+    if (
+      featureName != "session" &&
+      // the impression server in theory could send back things not requested
+      // in practice, this happens in unit tests
+      wireArgs[featureName as FeatureNames] != undefined
+    )
+      nameToFeature.set(featureName, { featureName, isOn: output != "OFF" });
   });
 
-  if (variantIdToVariant.size > 0) {
-    // we have some variants to turn on,
-    // combine them with existing variants
-    for (const variant of session._.activeVariants) {
-      variantIdToVariant.set(
-        variant.variantId ?? variant.experimentId,
-        variant
-      );
-    }
-    const sortMeVariants = [...variantIdToVariant.values()];
-    sortVariants(sortMeVariants);
-    session._.activeVariants = sortMeVariants;
-    misc.onUpdateActiveVariants(sortMeVariants);
+  const updatedFeatures = [...nameToFeature.values()];
+  const newFeatures: RequestedFeature[] = [];
+
+  for (const [name, feature] of nameToPrevFeature) {
+    if (!nameToFeature.has(name)) updatedFeatures.push(feature);
   }
+
+  for (const [name, feature] of nameToFeature) {
+    if (!nameToPrevFeature.has(name)) newFeatures.push(feature);
+  }
+
+  const sortFn = (a: RequestedFeature, b: RequestedFeature) =>
+    a.featureName.localeCompare(b.featureName);
+  updatedFeatures.sort(sortFn);
+  newFeatures.sort(sortFn);
+
+  /* --- update active variants --- */
+  const cachedVariants = (session._.cache.get(activeVariantsKey) ??
+    []) as ActiveVariant[];
+  const prevVariants = cachedVariants;
+  const idToPrevVariant = new Map(
+    prevVariants.map((v) => [v.variantId ?? v.experimentId, v])
+  );
+
+  const newVariants: ActiveVariant[] = [];
+  let updatedVariants: ActiveVariant[];
+
+  // this will hold all variants that should now be active
+  let idToVariant = new Map<string, Variant>();
+
+  if (iserverVariants != undefined) {
+    // if the iserver sent us variants, those are the ones to use
+    updatedVariants = iserverVariants;
+    idToVariant = new Map(
+      updatedVariants.map((v) => [v.variantId ?? v.experimentId, v])
+    );
+  } else {
+    // this impression was served out of the cache
+    // we need to add any variants that are now on b/c they were cached only impressions
+
+    idToVariant = new Map<string, Variant>();
+
+    Object.entries(outputs).forEach(([featureName, _output]) => {
+      const output = _output as _WireOutputs[keyof Omit<
+        _WireOutputs,
+        "session"
+      >];
+      const args = (wireArgs as Record<string, unknown>)[featureName];
+
+      if (featureName != "session" && output != "OFF" && output != undefined) {
+        const entry = session._.cache.getFeature(featureName, args);
+        if (entry && entry.impressionCount == 0) {
+          for (const wireVariant of output._variants ?? []) {
+            const id = wireVariant.variant?.id ?? wireVariant.id;
+            if (idToVariant.get(id) == undefined)
+              idToVariant.set(id, variantFromWire(wireVariant));
+          }
+        }
+      }
+    });
+
+    updatedVariants = [...idToVariant.values()];
+    for (const [id, variant] of idToPrevVariant) {
+      if (!idToVariant.has(id)) updatedVariants.push(variant);
+    }
+  }
+
+  for (const [id, variant] of idToVariant) {
+    if (!idToPrevVariant.has(id)) newVariants.push(variant);
+  }
+
+  sortVariants(newVariants);
+  sortVariants(updatedVariants);
+
+  /* --- save and notify --- */
+  session._.cache.set(activeVariantsKey, updatedVariants);
+  session._.cache.set(requestedFeaturesKey, updatedFeatures);
+
+  misc.onUpdateActiveVariants(newVariants);
+  misc.onImpression({
+    newVariants,
+    allVariants: updatedVariants,
+    newFeatures,
+    allFeatures: updatedFeatures,
+  });
 }
 
-function updateImpressionIds<T extends FeatureNames>(
-  impression: Impression<T>,
+function updateImpressionIds(
+  impression: ImpressionImpl,
   newImpressionId: string,
   wireArgs: _WireArgs
-): Impression<T> {
-  const newOutputs: _WireOutputs = {};
-  for (const k of Object.keys(wireArgs) as (keyof _WireArgs)[]) {
+): ImpressionImpl {
+  const newOutputs: Record<string, unknown> = {};
+  for (const _k of Object.keys(wireArgs ?? {}) as (keyof _WireArgs)[]) {
+    const k = _k as FeatureNames;
     const currentOutput = impression.toJSON().wireOutputs[k];
 
     // if the feature is off (or not there), don't update the impression ids
     if (currentOutput == "OFF" || currentOutput == undefined) {
-      // Casting b/c it can be too much for TS to understand
-      (newOutputs as { [idx: string]: unknown })[k] = currentOutput;
+      newOutputs[k] = currentOutput;
     } else {
-      const newOutput: { _impressionId: string } = {
+      const newOutput = {
         ...(currentOutput as any), // eslint-disable-line
         _impressionId: newImpressionId,
       };
-      // Casting b/c it can be too much for TS to understand
-      (newOutputs as { [idx: string]: unknown })[k] = newOutput;
+      newOutputs[k] = newOutput;
     }
   }
-  return toImpression({
+  return toImpressionImpl({
     impressionType: impression.toJSON().impressionType,
     sessionKeys: impression.sessionKeys,
     wireArgs,
     wireOutputs: newOutputs,
-  }) as Impression<T>;
+  }) as ImpressionImpl;
 }
 
 /**
@@ -3009,143 +3079,34 @@ export type ErrorTypes =
   | ErrorUnknown
   | ErrorField;
 
-type FlagsNone = { state: "none" };
-type FlagsLoading = { state: "loading" };
-type FlagsDone<T extends FeatureNames> = { state: "done"; flags: Flags<T> };
-
-type FlagsState<T extends FeatureNames> =
-  | FlagsNone
-  | FlagsLoading
-  | FlagsDone<T>;
-
-/**
- * @deprecated please use [[useImpression]]
- * React hook to get the on/off flags associated with a feature
- */
-export function useFlags(session?: Session): {
-  loading: boolean;
-  flags: Flags<FeatureNames> | undefined;
-  error: ErrorTypes | undefined;
-} {
-  const _session = useSession();
-  session = session ?? _session;
-  if (session == undefined) {
-    throw new Error(
-      "No session conext (SessionProvider), and no session passed in"
-    );
-  }
-
-  const [, forceUpdate] = useReducer((x) => x + 1, 0);
-  const errorState = useRef<ErrorTypes>();
-  const flagsState = useRef<FlagsState<FeatureNames>>({ state: "none" });
-  const prevSession = useRef(session);
-  const prevFlushCount = useRef(_flushCount);
-  let hasChange = false;
-
-  const cache = session._.cache;
-
-  // re-request if cache is busted or if the session changes
-  if (
-    !sessionArgsMatch(prevSession.current._.args, session._.args) ||
-    prevFlushCount.current != _flushCount
-  ) {
-    // not using useEffect / dependency array for this b/c want
-    // this code to reset the state in the same render cycle,
-    // the rest of the non effect code in the hook can further update it
-    hasChange = true;
-    flagsState.current = { state: "none" };
-
-    // update prev's
-    prevSession.current = session;
-    prevFlushCount.current = _flushCount;
-  }
-
-  // get cached values
-  const _cacheFlags = cache.flags();
-  if (flagsState.current.state == "none" && _cacheFlags != undefined) {
-    hasChange = true;
-    flagsState.current = {
-      state: "done",
-      flags: _cacheFlags,
-    };
-  }
-
-  // fetch results
-  useEffect(() => {
-    log.debug(1, "useFlags fetch results effect");
-
-    async function request() {
-      log.debug(1, "useFlags fetch results effect: request()");
-      if (!session) {
-        throw new Error(
-          "unexpected undefined session in useFlags(), useEffect"
-        );
-      }
-
-      log.debug(1, "request");
-
-      const { flags, error } = await session.requestFlags();
-      flagsState.current = {
-        state: "done",
-        flags,
-      };
-      errorState.current = error;
-      forceUpdate();
-    }
-
-    if (flagsState.current.state == "none") {
-      flagsState.current = { state: "loading" };
-      request();
-      forceUpdate();
-    }
-  });
-
-  // return current values
-  const loading =
-    flagsState.current.state == "none" || flagsState.current.state == "loading";
-
-  log.debug(3, "useFlags returning. loading", loading);
-
-  let flags: Flags<FeatureNames> | undefined = undefined;
-  if (flagsState.current.state == "done") flags = flagsState.current.flags;
-
-  if (hasChange) forceUpdate();
-
-  return {
-    loading,
-    flags: flags,
-    error: errorState.current,
-  };
-}
-
-type ImpressionNone<T extends FeatureNames> = {
+type ImpressionNone = {
   state: "none";
-  impression: Impression<T>;
+  impression: ImpressionImpl;
 };
 
-type ImpressionCached<T extends FeatureNames> = {
+type ImpressionCached = {
   state: "loadingCached" | "cached";
   newImpressionId: string;
-  cachedImpression: Impression<T>;
-  impression: Impression<T>;
+  cachedImpression: ImpressionImpl;
+  impression: ImpressionImpl;
   metadata: Map<string, RequestMetadata>;
 };
 
-type ImpressionLoading<T extends FeatureNames> = {
+type ImpressionLoading = {
   state: "loading";
-  impression: Impression<T>;
+  impression: ImpressionImpl;
 };
 
-type ImpressionDone<T extends FeatureNames> = {
+type ImpressionDone = {
   state: "done";
-  impression: Impression<T>;
+  impression: ImpressionImpl;
 };
 
-type ImpressionState<T extends FeatureNames> =
-  | ImpressionNone<T>
-  | ImpressionCached<T>
-  | ImpressionLoading<T>
-  | ImpressionDone<T>;
+type ImpressionState =
+  | ImpressionNone
+  | ImpressionCached
+  | ImpressionLoading
+  | ImpressionDone;
 
 /**
  * A React context to hold a [[Session]]
@@ -3177,7 +3138,11 @@ export function isImpressionType<
   T extends ImpressionNakedType<I>
 >(impression: I, toTestType: T): impression is Impression<T> & I {
   if (toTestType == undefined) return false;
-  return impression._.json.wireArgs[toTestType as FeatureNames] != undefined;
+  return (
+    (impression as unknown as ImpressionImpl)._.json.wireArgs[
+      toTestType as FeatureNames
+    ] != undefined
+  );
 }
 
 type FeatureExNakedType<F> = F extends Feature<infer T> ? T : never;
@@ -3227,16 +3192,18 @@ export function useImpression<Q extends Query<FeatureNames>>(
   // putting into a ref so hook always returns the same loading impression when loading
   const _loadingImpression = useRef(loadingImpression(session));
 
+  const wireArgs = query?._.wireArgs as _WireArgs;
+
   const [, forceUpdate] = useReducer((x) => x + 1, 0);
   const errorState = useRef<ErrorTypes>();
-  const impressionState = useRef<ImpressionState<QueryNakedType<Q>>>({
+  const impressionState = useRef<ImpressionState>({
     state: "none",
-    impression: _loadingImpression.current as Impression<QueryNakedType<Q>>,
+    impression: _loadingImpression.current,
   });
 
   const firstTime = useRef(true);
   const requestFinishTS = useRef<Date>();
-  const wireArgsJson = JSON.stringify(query ? query._.wireArgs : undefined);
+  const wireArgsJson = JSON.stringify(wireArgs ? wireArgs : undefined);
   const prevSession = useRef(_session);
   const prevWireArgsJson = useRef(wireArgsJson);
   const prevFlushCount = useRef(_flushCount);
@@ -3281,7 +3248,7 @@ export function useImpression<Q extends Query<FeatureNames>>(
     // update impression state
     impressionState.current = {
       state: "none",
-      impression: _loadingImpression.current as Impression<QueryNakedType<Q>>,
+      impression: _loadingImpression.current,
     };
 
     // update prev's
@@ -3295,9 +3262,10 @@ export function useImpression<Q extends Query<FeatureNames>>(
 
   // get cached values
   if (query != undefined && impressionState.current.state == "none") {
-    const { cachedImpression, metadata } = getCachedImpression<
-      QueryNakedType<Q>
-    >(session, query._.wireArgs);
+    const { cachedImpression, metadata } = getCachedImpression(
+      session,
+      wireArgs
+    );
 
     if (
       cachedImpression != undefined &&
@@ -3323,15 +3291,18 @@ export function useImpression<Q extends Query<FeatureNames>>(
         useLoadingImpression = !allHydratable;
       }
 
-      updateSessionVariants(_session, cachedImpression);
+      updateSessionVariants(
+        _session,
+        undefined,
+        newImpressionId,
+        cachedImpression
+      );
 
       if (useLoadingImpression) {
         impressionState.current = {
           state: "loadingCached",
           newImpressionId,
-          impression: _loadingImpression.current as Impression<
-            QueryNakedType<Q>
-          >,
+          impression: _loadingImpression.current,
           cachedImpression,
           metadata,
         };
@@ -3342,7 +3313,7 @@ export function useImpression<Q extends Query<FeatureNames>>(
           impression: updateImpressionIds(
             cachedImpression,
             newImpressionId,
-            query._.wireArgs
+            wireArgs
           ),
           cachedImpression,
           metadata,
@@ -3367,7 +3338,7 @@ export function useImpression<Q extends Query<FeatureNames>>(
         requestFinishTS.current = new Date();
         impressionState.current = {
           state: "done",
-          impression: impression as Impression<QueryNakedType<Q>>,
+          impression: impression as unknown as ImpressionImpl,
         };
         errorState.current = error;
         forceUpdate();
@@ -3377,13 +3348,12 @@ export function useImpression<Q extends Query<FeatureNames>>(
     if (query != undefined && impressionState.current.state == "none") {
       impressionState.current = {
         state: "loading",
-        impression: _loadingImpression.current as Impression<QueryNakedType<Q>>,
+        impression: _loadingImpression.current,
       };
       request();
       forceUpdate();
     }
   });
-
   useEffect(() => {
     if (
       query != undefined &&
@@ -3399,7 +3369,7 @@ export function useImpression<Q extends Query<FeatureNames>>(
         impression: updateImpressionIds(
           cachedImpression,
           newImpressionId,
-          query._.wireArgs
+          wireArgs
         ),
         cachedImpression,
         metadata,
@@ -3442,8 +3412,9 @@ export function useImpression<Q extends Query<FeatureNames>>(
   const flags = flagsFromImpression(impressionState.current.impression);
   return {
     loading,
-    impression: impressionState.current.impression as ImpressionType<Q>,
-    flags,
+    impression: impressionState.current
+      .impression as unknown as ImpressionType<Q>,
+    flags: flags as FlagsType<Q>,
     error: errorState.current,
   };
 }
@@ -3457,6 +3428,9 @@ type Feature<T extends FeatureNames> = Exclude<
   impression: Impression<T>;
 };
 
+/**
+ Converts Feature<A|B|C> into Feature<A> | Feature<B> | Feature<C>
+ */
 type DistributeFeature<F> = F extends Feature<infer T>
   ? T extends unknown
     ? Feature<T>
@@ -3471,12 +3445,11 @@ type DistributeFeature<F> = F extends Feature<infer T>
  */
 export function useFeature<
   T extends FeatureNamesNoArgs,
-  F extends DistributeFeature<Feature<T>>
 >(
   featureReq: T | undefined,
   impressionId?: string,
   session?: Session
-): F | undefined;
+): DistributeFeature<Feature<T>> | undefined;
 
 /**
  * React hook to get a single feature.
@@ -3486,21 +3459,19 @@ export function useFeature<
  */
 export function useFeature<
   T extends FeatureNames,
-  F extends DistributeFeature<Feature<T>>
 >(
   featureReq: Query<T> | undefined,
   impressionId?: string,
   session?: Session
-): F | undefined;
+): DistributeFeature<Feature<T>> | undefined;
 
 export function useFeature<
   T extends FeatureNames,
-  F extends DistributeFeature<Feature<T>>
 >(
   featureReq: T | Query<T> | undefined,
   impressionId?: string,
   session?: Session
-): F | undefined {
+): DistributeFeature<Feature<T>> | undefined {
   let featureName: T | undefined;
   let query: Query<T> | undefined;
   if (featureReq == undefined) {
@@ -3509,12 +3480,11 @@ export function useFeature<
   } else if (typeof featureReq == "string") {
     featureName = featureReq;
     const queryArgs: QueryArgs<T> = {} as QueryArgs<T>;
-    (queryArgs as any)[featureName] = {}; // eslint-disable-line
+    queryArgs[featureName] = {};
     query = createQuery(queryArgs);
   } else {
     query = featureReq;
-    // the filter on "_" is not strictly necessary, but just in case it is added later
-    const keys = [...Object.keys(query._.wireArgs).filter((k) => k != "_")];
+    const keys = [...Object.keys(query._.wireArgs ?? {})];
     featureName = keys[0] as T | undefined;
     if (keys.length == 0) log.warn("no feature requested for useFeature");
     if (keys.length > 1) {
@@ -3525,11 +3495,22 @@ export function useFeature<
   }
 
   const { impression } = useImpression(query, impressionId, session);
+  const impressionImpl = impression as ImpressionImpl;
   if (impression == undefined) return undefined;
   const feature = impression[featureName as unknown as keyof Impression<T>];
   if (feature == undefined) return undefined;
 
-  return { ...feature, featureName, impressionId, impression } as unknown as F;
+  const featureOutputs =
+    impressionImpl._.json.wireOutputs[featureName as FeatureNames];
+  const actualImpresionId =
+    featureOutputs == "OFF" ? undefined : featureOutputs?._impressionId;
+
+  return {
+    ...(feature as unknown as Omit<DistributeFeature<Feature<T>>, "impressionId" | "Impression">),
+    featureName,
+    impressionId: actualImpresionId,
+    impression,
+  } as DistributeFeature<Feature<T>>;
 }
 
 //#endregion
