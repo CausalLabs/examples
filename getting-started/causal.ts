@@ -274,7 +274,6 @@ export class Session extends SessionEvents {
     };
 
     if (req) this.addIncomingMessageArgs(req);
-    this._.cache.testAndTouchSession();
     bindAllMethods(this);
   }
 
@@ -895,6 +894,7 @@ async function requestImpression<Q extends Query<FeatureNames>>(
   );
 
   if (cachedImpression != undefined && cachedFlags != undefined) {
+    // signal and return the cached impression
     let impression = cachedImpression;
     if (impressionId != undefined) {
       // impressionId != undefined means this is not a cache fill request
@@ -930,6 +930,8 @@ async function requestImpression<Q extends Query<FeatureNames>>(
     implicitArgs: session._.implicitArgs,
     wireArgs: wireArgs,
   });
+
+  cache.maybeRegisterSSEHandler();
 
   session._.commSnapshot.fetches += 1;
   session._.commSnapshot.featuresRequested += featuresRequested;
@@ -1094,6 +1096,7 @@ function getCachedImpression(
   if (outputs == undefined) return { metadata: new Map() };
   const { wireOutputs: cachedOutputs, metadata } = outputs;
 
+  // create and return the cached impression
   const cachedImpression = toImpressionImpl({
     impressionType: "real", // only cache real impressions, not errors or loads
     wireArgs,
@@ -1102,6 +1105,9 @@ function getCachedImpression(
   });
 
   const cachedFlags = flagsFromImpression(cachedImpression);
+
+  // register the SSE handler if necessary
+  cache.maybeRegisterSSEHandler();
 
   return {
     cachedImpression,
@@ -1425,12 +1431,12 @@ export type CacheOptions = {
    */
   sessionCacheExpirySeconds?: number;
 
-  /** useServerSentEvents: Use server side events to update features
-   *  defaults to true for CSR, unless caching is disabled
+  /**
    *
-   *  setting to false will prevent push updates to feature outputs,
-   *  in which case features will only update when the cache expires
-   */
+   * Defaults to false.
+   * Setting to true will enable session cache busting outside of QA flows.
+   * This is not yet implemented end to end, so do not set it to true.
+   * */
   useServerSentEvents?: boolean;
 
   /**
@@ -1475,6 +1481,54 @@ type CacheInfo = {
 // maps args to cache store entries
 type FeatureEntry = Record<string, _RequestStoreEntry>;
 
+/** @internal only exported for testing */
+export const _eventSourceInfo: {
+  source: EventSource | undefined;
+  cache: _Cache | undefined;
+  forceUpdateFns: Set<() => void>;
+} = { source: undefined, cache: undefined, forceUpdateFns: new Set() };
+
+function registerForceUpdateFn(fn: () => void) {
+  _eventSourceInfo.forceUpdateFns.add(fn);
+}
+
+function unRegisterForceUpdateFn(fn: () => void) {
+  _eventSourceInfo.forceUpdateFns.delete(fn);
+}
+
+function forceHookUpdates() {
+  for (const fn of _eventSourceInfo.forceUpdateFns) fn();
+}
+
+function registerEventSource(cache: _Cache) {
+  if (_eventSourceInfo.cache == cache && _eventSourceInfo.source != undefined) {
+    // already registered
+    return;
+  }
+
+  // close previous one
+  if (_eventSourceInfo.source != undefined) {
+    _eventSourceInfo.source.close();
+    _eventSourceInfo.cache = undefined;
+    _eventSourceInfo.source = undefined;
+  }
+
+  if (cache.sessionArgs == undefined || network.newEvtSource == undefined) {
+    // nothing to do
+    return;
+  }
+
+  const url = sseUrl(cache.sessionArgs);
+  _eventSourceInfo.cache = cache;
+
+  const source = network.newEvtSource(url);
+  _eventSourceInfo.source = source;
+  source.addEventListener("flushcache", cache.sseFlushCache.bind(cache));
+  source.addEventListener("flushfeatures", cache.sseFlushFeatures.bind(cache));
+  source.addEventListener("hello", cache.sseHello.bind(cache));
+  return true;
+}
+
 /**
  * @internal
  * Do not use - only exported for testing
@@ -1485,7 +1539,6 @@ export class _Cache {
   outputExpirySeconds: number | undefined;
   useServerSentEvents: boolean;
   sessionCacheExpirySeconds: number;
-  eventSource: EventSource | undefined;
   cacheStats: {
     hits: Map<string, number>;
     misses: Map<string, number>;
@@ -1507,33 +1560,26 @@ export class _Cache {
     this.useServerSentEvents = useServerSentEvents;
     this.sessionCacheExpirySeconds = sessionCacheExpirySeconds;
     this.sessionArgs = sessionArgs;
+    this.touchCacheInfo();
+  }
 
-    if (sessionArgs == undefined) return;
-
-    // register server side events
-    this.eventSource = undefined;
-    if (
-      sessionArgs != undefined &&
+  shouldRegisterSSEHandler(): boolean {
+    if (_eventSourceInfo.cache == this && _eventSourceInfo.source != undefined)
+      return false;
+    return (
+      this.sessionArgs != undefined &&
       !misc.ssr &&
       !this.backingStore.dontStore() &&
-      this.useServerSentEvents
-    ) {
-      if (!network.newEvtSource) {
-        throw new Error("fatal: can not register server sent events");
-      } else {
-        const url = sseUrl(sessionArgs);
-        this.eventSource = network.newEvtSource(url);
-        this.eventSource.addEventListener(
-          "flushcache",
-          this.sseFlushCache.bind(this)
-        );
-        this.eventSource.addEventListener(
-          "flushfeatures",
-          this.sseFlushFeatures.bind(this)
-        );
-        this.eventSource.addEventListener("hello", this.sseHello.bind(this));
-      }
+      (this.useServerSentEvents || isCausalRegistered())
+    );
+  }
+
+  maybeRegisterSSEHandler(): boolean {
+    if (this.shouldRegisterSSEHandler()) {
+      registerEventSource(this);
+      return true;
     }
+    return false;
   }
 
   get(key: string): unknown {
@@ -1658,11 +1704,13 @@ export class _Cache {
   }
 
   /**
-   * @returns false if the caller should short circuit
+   * Touches the cacheInfo and updates the expiry
+   * If no cacheInfo, incompatible cache info, or the past expiry, creates a new one
+   * @returns undefined if no cache info is available
    */
-  testAndTouchSession(): boolean {
+  touchCacheInfo(): CacheInfo | undefined {
     log.debug(5, "testAndTouchSession");
-    if (this.backingStore.dontStore()) return false;
+    if (this.backingStore.dontStore()) return undefined;
 
     const oldCacheInfo = this.get(cacheInfoKey) as CacheInfo | undefined;
 
@@ -1724,7 +1772,7 @@ export class _Cache {
 
     this.set(cacheInfoKey, newCacheInfo);
 
-    return true;
+    return newCacheInfo;
   }
 
   getOutputExpiry() {
@@ -1733,7 +1781,7 @@ export class _Cache {
   }
 
   flags(): Flags<FeatureNames> | undefined {
-    if (!this.testAndTouchSession()) return undefined;
+    if (!this.touchCacheInfo()) return undefined;
 
     const value = this.get(flagsKey);
     if (value == undefined) return undefined;
@@ -1741,7 +1789,7 @@ export class _Cache {
   }
 
   setFlags(flags: _WireFlags) {
-    if (!this.testAndTouchSession()) return;
+    if (!this.touchCacheInfo()) return;
     this.set(flagsKey, flags);
   }
 
@@ -1774,7 +1822,7 @@ export class _Cache {
         metadata: Map<string, RequestMetadata>;
       }
     | undefined {
-    if (!this.testAndTouchSession()) return undefined;
+    if (!this.touchCacheInfo()) return undefined;
 
     const outputs: _WireOutputs = {};
     const metadata: Map<string, RequestMetadata> = new Map();
@@ -1830,7 +1878,7 @@ export class _Cache {
     wireOutputs: _WireOutputs,
     isCacheFill: boolean
   ) {
-    if (!this.testAndTouchSession()) return;
+    if (!this.touchCacheInfo()) return;
     const nextExpiry = this.getOutputExpiry();
 
     for (const [featureName, v] of Object.entries(wireOutputs) as [
@@ -1838,6 +1886,15 @@ export class _Cache {
       _WireOutputs[keyof _WireOutputs]
     ][]) {
       if (featureName == "session") {
+        if (this.get(sseInfoKey) == undefined) {
+          // older version of the iserver didn't send the last flush time
+          // in that case use the session start time
+          // will re-render too often in that case, but only for QA registered users
+          const lastFlushTime = (v as any)?.startTime; // eslint-disable-line
+          const startTime = (v as any)?.startTime; // eslint-disable-line
+          const sseInfo = lastFlushTime ?? startTime;
+          if (sseInfo != undefined) this.set(sseInfoKey, sseInfo);
+        }
         this.setFeature(featureName, this.sessionArgs, {
           value: v,
           expires: nextExpiry,
@@ -1891,6 +1948,7 @@ export class _Cache {
     _flushCount++;
     this.deleteAll(false);
     this.set(sseInfoKey, mevt.data);
+    forceHookUpdates();
   }
 
   // handle the "flushfeatures" sse.
@@ -1901,14 +1959,29 @@ export class _Cache {
     const mevt: MessageEvent = evt as MessageEvent;
     _flushCount++;
     this.sseMaybeDel(mevt.data, null);
+    forceHookUpdates();
   }
 
   sseHello(evt: Event) {
     if (this.backingStore.dontStore()) return;
+
+    function safeFlushTime(raw: unknown): number {
+      if (typeof raw == "number") return raw;
+      if (typeof raw == "string") {
+        const num = parseInt(raw);
+        if (isNaN(num)) return 0;
+        return num;
+      }
+      return 0;
+    }
+
     const mevt: MessageEvent = evt as MessageEvent;
-    const cacheVersion = this.get(sseInfoKey) as number;
-    if (cacheVersion != undefined && mevt.data != cacheVersion)
+    const newFlushTime = safeFlushTime(mevt.data);
+    const prevFlushTime = safeFlushTime(this.get(sseInfoKey));
+    if (prevFlushTime == undefined || newFlushTime > prevFlushTime) {
       this.deleteAll(true);
+      forceHookUpdates();
+    }
     this.set(sseInfoKey, mevt.data);
   }
 }
@@ -2064,12 +2137,6 @@ export type CausalOptions = {
   baseUrl?: string;
 
   /**
-   * useServerSentEvents: Use server side events to update features.
-   * Defaults to true for registered devices, false otherwise.
-   */
-  useServerSentEvents?: boolean;
-
-  /**
    * How long to wait for the impression server to respond before a timeout.
    * The default is 1000 ms (1 second)
    */
@@ -2155,7 +2222,7 @@ export type CausalDebugOptions = {
 
   /**
    * Is this an SSR render
-   * By default this is true if typeof window == "undefined" or typeof localStorage == "undefined", otherwise false
+   * By default this is true if typeof window == "undefined", otherwise false
    */
   ssr?: boolean;
 
@@ -2228,6 +2295,7 @@ const misc: MiscOptions = { ...defaultMisc };
 
 function isCausalRegistered() {
   try {
+    if (typeof window == "undefined") return false;
     return window.localStorage?.getItem(causalRegisteredKey) == "true" ?? false;
   } catch {
     return false;
@@ -2236,7 +2304,7 @@ function isCausalRegistered() {
 
 const defaultCacheOptions: Required<CacheOptions> = {
   outputExpirySeconds: 60 * 60 * 24 * 365 * 100, // 100 years (so will expire with the session)
-  useServerSentEvents: defaultSSR ? false : isCausalRegistered(),
+  useServerSentEvents: false,
   sessionCacheExpirySeconds: 60 * 30,
   ssrCacheType: "inMemory",
   csrCacheType: "localStorage",
@@ -2371,7 +2439,7 @@ export function initCausal(
       debugCO?.sessionCacheExpirySeconds ??
       defaultCacheOptions.sessionCacheExpirySeconds,
     useServerSentEvents:
-      options?.useServerSentEvents ?? defaultCacheOptions.useServerSentEvents,
+      debugCO?.useServerSentEvents ?? defaultCacheOptions.useServerSentEvents,
     ssrCacheType:
       debugOptions?.cacheOptions?.ssrCacheType ??
       defaultCacheOptions.ssrCacheType,
@@ -3215,17 +3283,18 @@ export function useImpression<Q extends Query<FeatureNames>>(
   // or if cache is busted
   // or if the session args change
   // or if the query changes
-  // of it the impression id changes
+  // or if the impression id changes
   let nextCycle: Date | undefined = undefined;
   const now = new Date();
   if (
     requestFinishTS.current != undefined &&
     _session._.cache.outputExpirySeconds
-  )
+  ) {
     nextCycle = addSeconds(
       requestFinishTS.current,
       _session._.cache.outputExpirySeconds
     );
+  }
 
   const sessionChanged = !sessionArgsMatch(
     prevSession.current._.args,
@@ -3321,6 +3390,16 @@ export function useImpression<Q extends Query<FeatureNames>>(
       }
     }
   }
+
+  // let QA refresh update this component
+  useEffect(() => {
+    if (isCausalRegistered()) {
+      registerForceUpdateFn(forceUpdate);
+      return () => {
+        unRegisterForceUpdateFn(forceUpdate);
+      };
+    }
+  }, []);
 
   // fetch results
   useEffect(() => {
@@ -3443,9 +3522,7 @@ type DistributeFeature<F> = F extends Feature<infer T>
  *  If the request is loading it will returned undefined.
  *  It does NOT return an error state, so you need to be happy with the control values on error.
  */
-export function useFeature<
-  T extends FeatureNamesNoArgs,
->(
+export function useFeature<T extends FeatureNamesNoArgs>(
   featureReq: T | undefined,
   impressionId?: string,
   session?: Session
@@ -3457,17 +3534,13 @@ export function useFeature<
  *  If the request is loading it will returned undefined.
  *  It does NOT return an error state, so you need to be happy with the control values on error.
  */
-export function useFeature<
-  T extends FeatureNames,
->(
+export function useFeature<T extends FeatureNames>(
   featureReq: Query<T> | undefined,
   impressionId?: string,
   session?: Session
 ): DistributeFeature<Feature<T>> | undefined;
 
-export function useFeature<
-  T extends FeatureNames,
->(
+export function useFeature<T extends FeatureNames>(
   featureReq: T | Query<T> | undefined,
   impressionId?: string,
   session?: Session
@@ -3506,7 +3579,10 @@ export function useFeature<
     featureOutputs == "OFF" ? undefined : featureOutputs?._impressionId;
 
   return {
-    ...(feature as unknown as Omit<DistributeFeature<Feature<T>>, "impressionId" | "Impression">),
+    ...(feature as unknown as Omit<
+      DistributeFeature<Feature<T>>,
+      "impressionId" | "Impression"
+    >),
     featureName,
     impressionId: actualImpresionId,
     impression,
