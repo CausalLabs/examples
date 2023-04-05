@@ -7,4 +7,6 @@ bin
 build
 node_modules
 .next
+hello-causal/.env
+hello-causal/compiler/downloads/
 test.ddl
