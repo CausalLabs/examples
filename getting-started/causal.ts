@@ -719,7 +719,10 @@ export type _WireArgs = Partial<QueryArgs<FeatureNames>>;
  * Do not use - only exported for testing
  */
 export type _WireOutputs = { session?: SessionArgs } & Partial<{
-  [P in FeatureNames]: (FeatureOutputs[P] & WireFeatureCommon) | "OFF";
+  [P in FeatureNames]:
+    | (FeatureOutputs[P] & WireFeatureCommon)
+    | "OFF"
+    | "UNKNOWN";
 }>;
 
 function signal(
@@ -788,15 +791,15 @@ class ImpressionImpl extends (SessionEvents as ImpressionBase) {
           shouldCreateFeature = false;
           break;
         case "real":
-          shouldCreateFeature = output != "OFF";
-          if (output == undefined) {
+          if (output == "OFF") shouldCreateFeature = false;
+          else if (output == undefined || output == "UNKNOWN") {
             log.info(
-              "undefined or null output for " +
+              "undefined, null or UNKNOWN output for " +
                 featureName +
                 ". Using defaults."
             );
             shouldCreateFeature = defaultFlags[featureName];
-          }
+          } else shouldCreateFeature = true;
       }
 
       if (shouldCreateFeature) {
@@ -1075,7 +1078,7 @@ function flagsFromImpression(
   for (const k of Object.keys(wireArgs ?? {})) {
     const v = wireOutputs[k as FeatureNames];
     const key = k as FeatureNames;
-    if (v === undefined) flags[key] = defaultFlags[key];
+    if (v === undefined || v == "UNKNOWN") flags[key] = defaultFlags[key];
     else flags[key] = v != "OFF";
   }
 
@@ -2159,7 +2162,9 @@ export type CausalOptions = {
   logIServerDetails?: boolean;
 
   /**
-   * If true, log to warn() any errors communicating with the iserver.
+   * @deprecated
+   *
+   * If true, log to error() any errors communicating with the iserver.
    * Errors include timeouts, exceptions thrown from fetch, and empty responses.
    *
    * The default is true.
@@ -2605,6 +2610,14 @@ function cleanWireArgs(wireArgs: _WireArgs | undefined): _WireArgs {
 }
 
 function logIServerIssue(message: string, ...optionalParams: unknown[]): void {
+  if (misc.logIServerCommErrors) log.error(message, ...optionalParams);
+  else if (misc.logIServerDetails) log.info(message, ...optionalParams);
+}
+
+function logIServerIssueAsWarn(
+  message: string,
+  ...optionalParams: unknown[]
+): void {
   if (misc.logIServerCommErrors) log.warn(message, ...optionalParams);
   else if (misc.logIServerDetails) log.info(message, ...optionalParams);
 }
@@ -2818,7 +2831,7 @@ async function iserverFetch({
 
     if (featuresRequested > 0 && featuresReceived == 0) {
       const errMsg = "no features were returned by the impression server";
-      logIServerIssue(errMsg);
+      logIServerIssueAsWarn(errMsg);
       warning = {
         errorType: "fetchResponse",
         message: errMsg,
@@ -2926,7 +2939,12 @@ function sendImpressionBeacon(
     const output = _output as _WireOutputs[keyof Omit<_WireOutputs, "session">];
     const args = (wireArgs as Record<string, unknown>)[featureName];
 
-    if (featureName != "session" && output != "OFF" && output != undefined) {
+    if (
+      featureName != "session" &&
+      output != "OFF" &&
+      output != "UNKNOWN" &&
+      output != undefined
+    ) {
       const entry = session._.cache.getFeature(featureName, args);
       if (entry) {
         entry.lastRender = misc.ssr ? "ssr" : "csr";
@@ -2986,7 +3004,10 @@ function updateSessionVariants(
       // in practice, this happens in unit tests
       wireArgs[featureName as FeatureNames] != undefined
     )
-      nameToFeature.set(featureName, { featureName, isOn: output != "OFF" });
+      nameToFeature.set(featureName, {
+        featureName,
+        isOn: output != "OFF" && output != "UNKNOWN",
+      });
   });
 
   const updatedFeatures = [...nameToFeature.values()];
@@ -3038,7 +3059,12 @@ function updateSessionVariants(
       >];
       const args = (wireArgs as Record<string, unknown>)[featureName];
 
-      if (featureName != "session" && output != "OFF" && output != undefined) {
+      if (
+        featureName != "session" &&
+        output != "OFF" &&
+        output != "UNKNOWN" &&
+        output != undefined
+      ) {
         const entry = session._.cache.getFeature(featureName, args);
         if (entry && entry.impressionCount == 0) {
           for (const wireVariant of output._variants ?? []) {
@@ -3087,7 +3113,11 @@ function updateImpressionIds(
     const currentOutput = impression.toJSON().wireOutputs[k];
 
     // if the feature is off (or not there), don't update the impression ids
-    if (currentOutput == "OFF" || currentOutput == undefined) {
+    if (
+      currentOutput == "OFF" ||
+      currentOutput == "UNKNOWN" ||
+      currentOutput == undefined
+    ) {
       newOutputs[k] = currentOutput;
     } else {
       const newOutput = {
@@ -3576,7 +3606,9 @@ export function useFeature<T extends FeatureNames>(
   const featureOutputs =
     impressionImpl._.json.wireOutputs[featureName as FeatureNames];
   const actualImpresionId =
-    featureOutputs == "OFF" ? undefined : featureOutputs?._impressionId;
+    featureOutputs == "OFF" || featureOutputs == "UNKNOWN"
+      ? undefined
+      : featureOutputs?._impressionId;
 
   return {
     ...(feature as unknown as Omit<
