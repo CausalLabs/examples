@@ -19,7 +19,7 @@ repositories {
 
 dependencies {
     // This is Causal's runtime library which is required to access the API
-    implementation 'io.causallabs:runtime:0.33.0'
+    implementation 'io.causallabs:runtime:0.34.1'
 }
 
 // This task will generate the API defined in the "causal.fdl" file into the 
