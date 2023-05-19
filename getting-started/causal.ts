@@ -26,6 +26,11 @@ class FeatureBase {
 
 /* eslint-disable */
 
+export interface ImpressionTime {
+   impressionId: string;
+   impressionTime: number;
+}
+
 
 /** 
 * Wraps a rating box that we can put on various product pages
@@ -232,6 +237,7 @@ export class Session extends SessionEvents {
     implicitArgs: ImplicitArgs;
     cache: _Cache;
     originator: "ssr" | "csr";
+    fromTransferredJson: boolean;
     hydrating: boolean;
     hydrationKeys: {
       featureName: string;
@@ -271,6 +277,7 @@ export class Session extends SessionEvents {
         errorsAndWarnings: [],
       },
       sessionKeys: sessionKeys(args),
+      fromTransferredJson: false,
     };
 
     if (req) this.addIncomingMessageArgs(req);
@@ -300,8 +307,20 @@ export class Session extends SessionEvents {
   /**
    * The currently active experiment variants. This is intended for reporting information to other
    * systems. It should *not* be used as an input for any display or logic on your site.
+   *
+   * These are updated after a call to requestImpression, useImpression or useFeature
+   * The active variants will not be available until after the first call to one of these methods
    */
   get activeVariants(): ActiveVariant[] {
+    if (
+      this._.commSnapshot.featuresRequested == 0 &&
+      !this._.fromTransferredJson
+    ) {
+      log.warn(
+        "session.activeVariants called before any features were requested"
+      );
+    }
+
     return (this._.cache.get(activeVariantsKey) ?? []) as ActiveVariant[];
   }
 
@@ -311,6 +330,20 @@ export class Session extends SessionEvents {
    */
   get requestedFeatures(): RequestedFeature[] {
     return (this._.cache.get(requestedFeaturesKey) ?? []) as RequestedFeature[];
+  }
+
+  /**
+   * Returns true if the call to session constructor [i.e. new Session()] created a new cache
+   * This is true iff
+   *    - this is the first time creating a session
+   *    - the previous session expired
+   *    - the session was created with different session args then what was cached
+   *    - you are using an ephemeral cache (e.g. in SSR)
+   *
+   * This call is useful in the browser to determine if you've created a new session
+   */
+  get constructedNewCache(): boolean {
+    return this._.cache.isNew;
   }
 
   /** Returns information about this sessions communication with the impression server */
@@ -408,6 +441,7 @@ export class Session extends SessionEvents {
     // it will also expire the cache if the cache is too old
     const session = new Session(json.sessionArgs as SessionArgs);
     session._.originator = json.originator;
+    session._.fromTransferredJson = true;
 
     if (_options.alwaysDelExistingCache) session._.cache.backingStore.delAll();
 
@@ -861,11 +895,22 @@ function bindAllMethods(obj: any) {
   // this is used in exported class constructors
   // so that those classes can be destructured
   // w/o worrying about "this" semantics
+  const props = Object.getOwnPropertyNames(Object.getPrototypeOf(obj));
 
-  Object.getOwnPropertyNames(Object.getPrototypeOf(obj))
-    .filter((method) => typeof obj[method] === "function")
-    .filter((method) => method != "constructor")
-    .forEach((method) => (obj[method] = obj[method].bind(obj)));
+  props.forEach((prop) => {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      Object.getPrototypeOf(obj),
+      prop
+    );
+
+    if (
+      descriptor &&
+      typeof descriptor.value === "function" &&
+      prop !== "constructor"
+    ) {
+      obj[prop] = obj[prop].bind(obj);
+    }
+  });
 }
 
 type ImplicitArgs = {
@@ -1542,6 +1587,7 @@ export class _Cache {
   outputExpirySeconds: number | undefined;
   useServerSentEvents: boolean;
   sessionCacheExpirySeconds: number;
+  isNew: boolean;
   cacheStats: {
     hits: Map<string, number>;
     misses: Map<string, number>;
@@ -1563,7 +1609,7 @@ export class _Cache {
     this.useServerSentEvents = useServerSentEvents;
     this.sessionCacheExpirySeconds = sessionCacheExpirySeconds;
     this.sessionArgs = sessionArgs;
-    this.touchCacheInfo();
+    this.isNew = this.touchCacheInfo().isNew;
   }
 
   shouldRegisterSSEHandler(): boolean {
@@ -1711,9 +1757,10 @@ export class _Cache {
    * If no cacheInfo, incompatible cache info, or the past expiry, creates a new one
    * @returns undefined if no cache info is available
    */
-  touchCacheInfo(): CacheInfo | undefined {
+  touchCacheInfo(): { cacheInfo: CacheInfo | undefined; isNew: boolean } {
     log.debug(5, "testAndTouchSession");
-    if (this.backingStore.dontStore()) return undefined;
+    if (this.backingStore.dontStore())
+      return { cacheInfo: undefined, isNew: true };
 
     const oldCacheInfo = this.get(cacheInfoKey) as CacheInfo | undefined;
 
@@ -1753,12 +1800,14 @@ export class _Cache {
       }
     }
 
+    let argsMismatch = false;
     const curSessionArgs = this.sessionArgs;
     if (
       !this.backingStore.isEmpty() &&
       oldCacheInfo?.sessionArgs &&
       !sessionArgsMatch(oldCacheInfo.sessionArgs, curSessionArgs)
     ) {
+      argsMismatch = true;
       log.debug(1, "session args changes, deleting values");
       this.deleteAll(true);
     }
@@ -1775,7 +1824,10 @@ export class _Cache {
 
     this.set(cacheInfoKey, newCacheInfo);
 
-    return newCacheInfo;
+    return {
+      cacheInfo: newCacheInfo,
+      isNew: cacheExpired || argsMismatch || !oldCacheInfo,
+    };
   }
 
   getOutputExpiry() {
@@ -1784,7 +1836,7 @@ export class _Cache {
   }
 
   flags(): Flags<FeatureNames> | undefined {
-    if (!this.touchCacheInfo()) return undefined;
+    if (!this.touchCacheInfo().cacheInfo) return undefined;
 
     const value = this.get(flagsKey);
     if (value == undefined) return undefined;
@@ -1792,7 +1844,7 @@ export class _Cache {
   }
 
   setFlags(flags: _WireFlags) {
-    if (!this.touchCacheInfo()) return;
+    if (!this.touchCacheInfo().cacheInfo) return;
     this.set(flagsKey, flags);
   }
 
@@ -1825,7 +1877,7 @@ export class _Cache {
         metadata: Map<string, RequestMetadata>;
       }
     | undefined {
-    if (!this.touchCacheInfo()) return undefined;
+    if (!this.touchCacheInfo().cacheInfo) return undefined;
 
     const outputs: _WireOutputs = {};
     const metadata: Map<string, RequestMetadata> = new Map();
@@ -1881,7 +1933,7 @@ export class _Cache {
     wireOutputs: _WireOutputs,
     isCacheFill: boolean
   ) {
-    if (!this.touchCacheInfo()) return;
+    if (!this.touchCacheInfo().cacheInfo) return;
     const nextExpiry = this.getOutputExpiry();
 
     for (const [featureName, v] of Object.entries(wireOutputs) as [
@@ -3429,6 +3481,7 @@ export function useImpression<Q extends Query<FeatureNames>>(
         unRegisterForceUpdateFn(forceUpdate);
       };
     }
+    return undefined;
   }, []);
 
   // fetch results
