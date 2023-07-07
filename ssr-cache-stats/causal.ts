@@ -47,6 +47,12 @@ export class RatingBox extends FeatureBase {
      *  Control: "Rate this product!"
      */
     readonly callToAction: string = "Rate this product!";
+    /** 
+     * The button text for the user submit a review.
+     *
+     *  Control: "Send Review"
+     */
+    readonly actionButton: string = "Send Review";
 
     /**
      * Occurs each time a rating is collected
