@@ -18,10 +18,10 @@ class Test {
     if (!req.isSimpleOutputSet()) {
       switch (req.getSimpleOutputExternal()) {
         case BigNumber:
-          req.setSimpleOutput(1000000);
+          req.setSimpleOutput(1000000L);
           break;
         case SmallNumber:
-          req.setSimpleOutput(2);
+          req.setSimpleOutput(2L);
           break;
       }
     }

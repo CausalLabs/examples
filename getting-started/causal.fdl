@@ -12,6 +12,9 @@ feature RatingBox {
     output {
         "The text next to the stars that prompts the visitor to rate the product"
         callToAction: String! = "Rate this product!"
+
+        "The button text for the user submit a review."
+        actionButton: String! = "Send Review"
     }
 
     "Occurs each time a rating is collected"
