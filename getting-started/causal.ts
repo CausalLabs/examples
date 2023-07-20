@@ -160,8 +160,7 @@ function sseUrl( s : Partial<SessionArgs> ) {
   let sseUrl = network.getBaseUrl().replace(
         /\/?$/,
         "/sse?id=");
-  if ( s.deviceId != undefined)
-      sseUrl += s.deviceId + "+";
+  sseUrl += s.deviceId;
   return sseUrl;
 }
 
@@ -363,7 +362,10 @@ export class Session extends SessionEvents {
    * @returns the serialized JSON
    */
   toJSON(): SessionJSON {
-    if (this._.commSnapshot.fetches == 0) {
+    if (
+      this._.commSnapshot.fetches == 0 &&
+      this._.cache.cacheStats.hits.size == 0
+    ) {
       log.warn(
         "Session.toJSON() called before a call to requestImpression() or requestCacheFill()"
       );
