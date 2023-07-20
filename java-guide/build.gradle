@@ -17,8 +17,8 @@ repositories {
 
 dependencies
 {
-    implementation 'io.causallabs:runtime:0.38.0'
-    iserver 'io.causallabs:iserver:0.38.0'
+    implementation 'io.causallabs:runtime:0.39.0'
+    iserver 'io.causallabs:iserver:0.39.0'
     testImplementation'org.testng:testng:7.4.0'
 }
 
@@ -59,10 +59,11 @@ fatJar.dependsOn(jar)
 task iserver(type: JavaExec) {
     classpath configurations.iserver
     main = 'io.causallabs.iserver.ImpressionServer'
-    // --no-log means don't write any data to the weblogs or tools ui. Useful for debugging, and not generating real data
+    // -Diserver.nolog=true means don't write any data to the weblogs or tools ui. Useful for debugging, and not generating real data, do not use with real deployments
     // --fdl means replace the FDL stored in the cloud on the environment with the local file. Useful to experiment with changes before checking them in
     // NOTE: The tokens are for Causal's throwaway sandbox environment. You should replace the values for --environment and --token with your own.
-    args "--no-log", "--environment", "79f51299-1626-4f1f-ab6c-b7b40753f3af", "--token", "d53b4f107205475df88dc807", "--fdl", "example.fdl", "--plugin", fatJar.archivePath
+    args "--environment", "79f51299-1626-4f1f-ab6c-b7b40753f3af", "--token", "d53b4f107205475df88dc807", "--fdl", "example.fdl", "--plugin", fatJar.archivePath
+    jvmArgs "-Diserver.nolog=true"
 
 }
 iserver.dependsOn(fatJar)
