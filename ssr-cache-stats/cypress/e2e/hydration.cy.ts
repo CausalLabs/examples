@@ -65,6 +65,17 @@ describe("hydration success", () => {
     cy.wait(750);
     cy.get("[data-testid=loading-impressions]").contains(/^0 /);
     cy.get("[data-testid=cache-misses]").contains(/^0 /);
+
+    // test SSR with each page type doesn't cause a hydration error
+    cy.visit("http://localhost:8080/pagetypes?defaultPageType=SSR");
+    cy.visit("http://localhost:8080/pagetypes?defaultPageType=CSR");
+    cy.visit("http://localhost:8080/pagetypes?defaultPageType=SSG");
+  });
+
+  it("no hydration errors", () => {
+    cy.visit("http://localhost:8080/pagetypes?defaultPageType=SSR");
+    cy.visit("http://localhost:8080/pagetypes?defaultPageType=CSR");
+    cy.visit("http://localhost:8080/pagetypes?defaultPageType=SSG");
   });
 });
 
