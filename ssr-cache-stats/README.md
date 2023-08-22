@@ -14,8 +14,6 @@ yarn dev
 ```
 
 The sample app will be running on [http://localhost:8080](http://localhost:8080)
-
-Please see [SSR info](https://tech.causallabs.io/docs/reference/examples/ssr-cache) for details on the SSR apis
 ​
 
 ## Displayed Stats

@@ -1,12 +1,5 @@
 // This is a FeatureDL automatically generated file. DO NOT DIRECTLY EDIT, your changes will not persist.
 import fetch from "cross-fetch";
-import {
-  useEffect,
-  useReducer,
-  useRef,
-  useContext,
-  createContext,
-} from "react";
 
 class FeatureBase {
   // featureName FeatureBasewill always be set
@@ -17,11 +10,11 @@ class FeatureBase {
 
   readonly _: {
     impressionId?: string;
-    impression?: ImpressionImpl;
+    impression?: Impression<FeatureNames>;
   } = {};
 }
 
-///////////////////////////////////////////////////////////////////////////////
+// TSBase
 //#region  parameterized
 
 /* eslint-disable */
@@ -141,7 +134,7 @@ class SessionEvents {
 
 /* eslint-enable */
 
-function sessionKeys( s : Partial<SessionArgs> ) {
+export function sessionKeys( s : Partial<SessionArgs> ) {
   return {
     deviceId : s?.deviceId,
   };
@@ -160,8 +153,7 @@ function sseUrl( s : Partial<SessionArgs> ) {
   let sseUrl = network.getBaseUrl().replace(
         /\/?$/,
         "/sse?id=");
-  if ( s.deviceId != undefined)
-      sseUrl += s.deviceId + "+";
+  sseUrl += s.deviceId;
   return sseUrl;
 }
 
@@ -175,7 +167,7 @@ function sseUrl( s : Partial<SessionArgs> ) {
 * A query is executed by calling either [[requestImpression]] or [[useImpression]].
 *
 */
-class Query<T extends FeatureNames>{
+export class Query<T extends FeatureNames>{
     /** 
     * Wraps a rating box that we can put on various product pages
     * to collect ratings from our users
@@ -202,6 +194,7 @@ class Query<T extends FeatureNames>{
     }
 
 
+    /** @internal */
     readonly _: {
         _?: T; // T must be in the type for inference to work correctly
         wireArgs: Record<string, unknown>;
@@ -244,13 +237,13 @@ export class Session extends SessionEvents {
     cache: _Cache;
     originator: "ssr" | "csr";
     fromTransferredJson: boolean;
-    hydrating: boolean;
-    hydrationKeys: {
+    ssrTransfer: boolean;
+    ssrKeys: {
       featureName: string;
-      args: unknown;
+      strArgs: string;
     }[];
 
-    // this track the number of times useImpression() returned with loading == true
+    // this tracks the number of times useImpression() returned with loading == true
     // it's used a part of testing, to ensure we are not doing this incorrectly
     loadingImpressionsCount: number;
 
@@ -262,7 +255,7 @@ export class Session extends SessionEvents {
     super(sessionKeys(args));
 
     const _backingStore = makeBackingStore(
-      misc.ssr ? cacheOptions.ssrCacheType : cacheOptions.csrCacheType,
+      _misc.ssr ? cacheOptions.ssrCacheType : cacheOptions.csrCacheType,
       cacheOptions.makeCustomStore
     );
     const _cache = new _Cache(args, _backingStore, cacheOptions);
@@ -271,9 +264,9 @@ export class Session extends SessionEvents {
       args,
       cache: _cache,
       implicitArgs: {},
-      originator: misc.ssr ? "ssr" : "csr",
-      hydrating: false,
-      hydrationKeys: [],
+      originator: _misc.ssr ? "ssr" : "csr",
+      ssrTransfer: false,
+      ssrKeys: [],
       loadingImpressionsCount: 0,
       commSnapshot: {
         fetches: 0,
@@ -322,7 +315,7 @@ export class Session extends SessionEvents {
       this._.commSnapshot.featuresRequested == 0 &&
       !this._.fromTransferredJson
     ) {
-      log.warn(
+      _log.warn(
         "session.activeVariants called before any features were requested"
       );
     }
@@ -358,13 +351,16 @@ export class Session extends SessionEvents {
   }
 
   /**
-   * Serializes a session to JSON. Used in conjunction with [[fromJSON]]. Useful to transfer a session across a JSON serialization boundary
+   * Serializes a session to JSON. Used in conjunction with [[useSessionJSON]]. Useful to transfer a session for SSR.
    *
    * @returns the serialized JSON
    */
   toJSON(): SessionJSON {
-    if (this._.commSnapshot.fetches == 0) {
-      log.warn(
+    if (
+      this._.commSnapshot.fetches == 0 &&
+      this._.cache.cacheStats.hits.size == 0
+    ) {
+      _log.warn(
         "Session.toJSON() called before a call to requestImpression() or requestCacheFill()"
       );
     }
@@ -372,7 +368,7 @@ export class Session extends SessionEvents {
     const cacheJson: Record<string, string> = {};
     const featureJson: (_RequestStoreEntry & {
       featureName: string;
-      args: unknown;
+      strArgs: string;
     })[] = [];
     for (const key of this._.cache.backingStore.keys()) {
       if (key.startsWith(nonFeaturePrefix)) {
@@ -387,8 +383,8 @@ export class Session extends SessionEvents {
           | FeatureEntry
           | undefined;
         if (featureEntry) {
-          for (const [args, _entry] of Object.entries(featureEntry)) {
-            const entry = { ..._entry, featureName, args };
+          for (const [strArgs, _entry] of Object.entries(featureEntry)) {
+            const entry = { ..._entry, featureName, strArgs };
             featureJson.push(entry);
           }
         }
@@ -411,14 +407,7 @@ export class Session extends SessionEvents {
     return JSON.parse(JSON.stringify(sessionJson));
   }
 
-  /**
-   *
-   * YOU PROBABLY WANT TO USE [[useSessionJSON]] AND NOT THIS FUNCTION.
-   *  Converts serialized JSON back to a session. Used in conjunction with [[toJSON]].
-   *  Useful to transfer a session across a JSON serialization boundary
-   *
-   * @returns the new session
-   */
+  /** @internal */
   static fromJSON(
     json: SessionJSON,
     options?: {
@@ -426,18 +415,19 @@ export class Session extends SessionEvents {
       alwaysDelExistingCache?: boolean;
 
       /**
-       * If true, will set session hydrating to true (see [[Session.setHydrating]]) and all the transferred entries to hydratable.
-       *  Doing this makes useImpression only return hydratable entries immediately (to match the SSR render).
-       *  After hydration completes, it is important to indicate to the session that the hydration is complete with [[Session.hydrationComplete]].
+       * If true, will indicate to Causal that an SSR render occurred and only tranferred entries should render on the first tick
+       *  Doing this prevents react hydration errors.
+       *  After the first render, it is important to indicate that the SSR transfer is complete by calling [[Session.ssrTransferComplete]].
+       *  The react hook [[useSessionJSON]] will handle this automatically
        *  Default to true if transfering from ssr to csr, otherwise false
        */
-      hydrating?: boolean;
+      ssrTransfer?: boolean;
     }
   ): Session {
     const _options = {
       ...{
         alwaysDelExistingCache: false,
-        hydrating: json.originator == "ssr" && !misc.ssr,
+        ssrTransfer: json.originator == "ssr" && !_misc.ssr,
       },
       ...options,
     };
@@ -451,7 +441,7 @@ export class Session extends SessionEvents {
 
     if (_options.alwaysDelExistingCache) session._.cache.backingStore.delAll();
 
-    const hydrating = _options.hydrating;
+    const ssrTransfer = _options.ssrTransfer;
 
     // transfer the cache entries
     const cacheJson = json.cacheJson;
@@ -463,7 +453,7 @@ export class Session extends SessionEvents {
           try {
             session._.cache.set(k, v);
           } catch {
-            log.warn("failed to restore non feature " + k);
+            _log.warn("failed to restore non feature " + k);
           }
         }
       }
@@ -473,52 +463,41 @@ export class Session extends SessionEvents {
     session._.cache.set("transferredCommSnapshot", json.commSnapshotJson);
 
     if (featuresJson != undefined) {
-      for (const { featureName, args, ...entry } of featuresJson) {
+      for (const { featureName, strArgs, ...entry } of featuresJson) {
         try {
           const { created: _created, expires: _expires, ...rest } = entry;
 
           const created = new Date(_created);
           const expires = new Date(_expires);
 
-          session._.cache.setFeature(featureName, args, {
+          session._.cache.setFeature(featureName, strArgs, {
             ...rest,
             created,
             expires,
-            hydratable: hydrating,
           });
         } catch {
-          log.warn(`failed to restore feature entry ${featureName} ${args}`);
+          _log.warn(
+            `failed to restore feature entry ${featureName} ${strArgs}`
+          );
         }
       }
 
-      session._.hydrating = hydrating;
-      if (hydrating)
-        session._.hydrationKeys = featuresJson.map(({ featureName, args }) => {
-          return { featureName, args };
+      session._.ssrTransfer = ssrTransfer;
+      if (ssrTransfer)
+        session._.ssrKeys = featuresJson.map(({ featureName, strArgs }) => {
+          return { featureName, strArgs };
         });
-      else session._.hydrationKeys = [];
+      else session._.ssrKeys = [];
     }
 
     return session;
   }
 
-  /**
-   * Indicate to the session that hydration is complete
-   */
-  setHydrationComplete() {
-    if (this._.hydrating) {
-      const keys = this._.hydrationKeys;
-      for (const k of keys) {
-        const entry = this._.cache.getFeature(k.featureName, k.args);
-        if (entry) {
-          this._.cache.setFeature(k.featureName, k.args, {
-            ...entry,
-            hydratable: false,
-          });
-        }
-      }
-      this._.hydrating = false;
-      this._.hydrationKeys = [];
+  /** @internal */
+  setSsrTransferComplete() {
+    if (this._.ssrTransfer) {
+      this._.ssrTransfer = false;
+      this._.ssrKeys = [];
     }
   }
 
@@ -531,7 +510,6 @@ export class Session extends SessionEvents {
       ...this._.args,
       userAgent: incomingMessage?.headers["user-agent"] as string,
       clientType: "typescript",
-      ipAddress: incomingMessage?.socket.remoteAddress,
       entryUrl: incomingMessage?.url,
     };
   }
@@ -628,16 +606,16 @@ type UndefinedToNull<T> = {
   [P in keyof T]-?: undefined extends T[P] ? T[P] | null : T[P];
 };
 
-type FeatureNames = keyof typeof allFeatureTypes;
+export type FeatureNames = keyof typeof allFeatureTypes;
 type SessionKeys = Partial<ReturnType<typeof sessionKeys>>;
-type Flags<T extends FeatureNames> = { [P in T]: boolean };
+export type Flags<T extends FeatureNames> = { [P in T]: boolean };
 type _WireFlags = typeof defaultFlags;
 
-type Impression<T extends FeatureNames> = {
+export type Impression<T extends FeatureNames> = {
   [P in keyof Pick<
-    ImpressionImpl,
+    _ImpressionImpl,
     T | "toJSON" | "sessionKeys"
-  >]: ImpressionImpl[P];
+  >]: _ImpressionImpl[P];
 } & SessionEvents;
 
 /**
@@ -647,11 +625,15 @@ type Impression<T extends FeatureNames> = {
  *
  * @paramtype The feature to query for
  */
-type QueryArgs<T extends FeatureNames> = {
+export type QueryArgs<T extends FeatureNames> = {
   [F in T]: Parameters<Query<T>[`get${F}`]>[number] | Record<string, never>;
 };
 
-function signalInstance(feature: FeatureBase, event: string, args: unknown) {
+export function signalInstance(
+  feature: FeatureBase,
+  event: string,
+  args: unknown
+) {
   // this is default feature, can't really signal
   if (feature._.impression == undefined) return;
   if (feature._.impressionId == undefined) return;
@@ -691,7 +673,7 @@ function signalSession(
 
   if (session instanceof Session) {
     if (session._.commSnapshot.fetches == 0) {
-      log.info(
+      _log.info(
         "Possibly signaling a session event without requesting an impression. " +
           "If the impression was requested with another Session with the same args, you can ignore this message."
       );
@@ -715,7 +697,7 @@ export function createQuery<T extends FeatureNames>(
   return query as Query<T>;
 }
 
-type FeatureNamesNoArgs = keyof OmitNever<{
+export type FeatureNamesNoArgs = keyof OmitNever<{
   [F in FeatureNames]: Parameters<Query<F>[`get${F}`]>[0] extends undefined
     ? F
     : never;
@@ -731,7 +713,9 @@ type WireFeatureCommon = {
 };
 
 type AllFeatureClasses = {
-  [F in keyof typeof allFeatureTypes]: InstanceType<typeof allFeatureTypes[F]>;
+  [F in keyof typeof allFeatureTypes]: InstanceType<
+    (typeof allFeatureTypes)[F]
+  >;
 };
 
 type AFeatureOutput<F extends FeatureNames> = {
@@ -748,16 +732,10 @@ type FeatureOutputs = {
   >;
 };
 
-/**
- * @internal
- * Do not use - only exported for testing
- */
+/** @internal */
 export type _WireArgs = Partial<QueryArgs<FeatureNames>>;
 
-/**
- * @internal
- * Do not use - only exported for testing
- */
+/** @internal */
 export type _WireOutputs = { session?: SessionArgs } & Partial<{
   [P in FeatureNames]:
     | (FeatureOutputs[P] & WireFeatureCommon)
@@ -786,7 +764,9 @@ function signal(
 // to tell the TS compiler that ImpressionImp really does
 // potentially have each of the feature classes as a member
 type ImpressionBaseType = Partial<{
-  [F in keyof typeof allFeatureTypes]: InstanceType<typeof allFeatureTypes[F]>;
+  [F in keyof typeof allFeatureTypes]: InstanceType<
+    (typeof allFeatureTypes)[F]
+  >;
 }> &
   SessionEvents;
 
@@ -794,13 +774,19 @@ interface ImpressionBase {
   new (sessionKeys: SessionKeys): ImpressionBaseType;
 }
 
-class ImpressionImpl extends (SessionEvents as ImpressionBase) {
+/** @internal */
+export class _ImpressionImpl extends (SessionEvents as ImpressionBase) {
   /** internal */
   readonly _: { sessionKeys: SessionKeys; json: ImpressionJSON };
 
   // Note: There is no impression id declared at this level
   // The features have impression ids as part of their outputs
 
+  /**
+   * Serializes an impression to JSON. Used in conjunction with [[toImpression]]. Useful to transfer an impression for SSR.
+   *
+   * @returns the serialized JSON
+   */
   toJSON() {
     return this._.json;
   }
@@ -833,7 +819,7 @@ class ImpressionImpl extends (SessionEvents as ImpressionBase) {
         case "real":
           if (output == "OFF") shouldCreateFeature = false;
           else if (output == undefined || output == "UNKNOWN") {
-            log.info(
+            _log.info(
               "undefined, null or UNKNOWN output for " +
                 featureName +
                 ". Using defaults."
@@ -921,13 +907,14 @@ function bindAllMethods(obj: any) {
 
 type ImplicitArgs = {
   userAgent?: string;
-  ipAddress?: string;
   entryUrl?: string;
   clientType?: string;
 };
 
-type ImpressionType<Q> = Q extends Query<infer T> ? Impression<T> : never;
-type FlagsType<Q> = Q extends Query<infer T> ? Flags<T> : never;
+export type ImpressionType<Q> = Q extends Query<infer T>
+  ? Impression<T>
+  : never;
+export type FlagsType<Q> = Q extends Query<infer T> ? Flags<T> : never;
 
 async function requestImpression<Q extends Query<FeatureNames>>(
   session: Session,
@@ -942,7 +929,7 @@ async function requestImpression<Q extends Query<FeatureNames>>(
   const cache = session._.cache;
   const wireArgs = query._.wireArgs;
 
-  const { cachedImpression, cachedFlags } = getCachedImpression(
+  const { cachedImpression, cachedFlags } = _getCachedImpression(
     session,
     wireArgs
   );
@@ -952,9 +939,14 @@ async function requestImpression<Q extends Query<FeatureNames>>(
     let impression = cachedImpression;
     if (impressionId != undefined) {
       // impressionId != undefined means this is not a cache fill request
-      updateSessionVariants(session, undefined, impressionId, cachedImpression);
-      sendImpressionBeacon(session, cachedImpression, impressionId);
-      impression = updateImpressionIds(
+      _updateSessionVariants(
+        session,
+        undefined,
+        impressionId,
+        cachedImpression
+      );
+      _sendImpressionBeacon(session, cachedImpression, impressionId);
+      impression = _updateImpressionIds(
         cachedImpression,
         impressionId,
         wireArgs
@@ -1004,7 +996,7 @@ async function requestImpression<Q extends Query<FeatureNames>>(
   if (flags) cache.setFlags(flags);
 
   if (activeVariants)
-    updateSessionVariants(session, activeVariants, impressionId, impression);
+    _updateSessionVariants(session, activeVariants, impressionId, impression);
 
   if (impression != undefined) {
     cache.setOutputs(
@@ -1014,7 +1006,7 @@ async function requestImpression<Q extends Query<FeatureNames>>(
     );
     return {
       impression: impression as unknown as ImpressionType<Q>,
-      flags: flagsFromImpression(impression) as unknown as FlagsType<Q>, // cast needed for older version of TS
+      flags: _flagsFromImpression(impression) as unknown as FlagsType<Q>, // cast needed for older version of TS
       error,
     };
   } else {
@@ -1024,37 +1016,13 @@ async function requestImpression<Q extends Query<FeatureNames>>(
 
     return {
       impression: errImpression as unknown as ImpressionType<Q>,
-      flags: flagsFromImpression(errImpression) as FlagsType<Q>,
+      flags: _flagsFromImpression(errImpression) as FlagsType<Q>,
       error: error ?? {
         errorType: "unknown",
         message: "unknown error",
       },
     };
   }
-}
-
-/**
- * Creates a session from transferred [[SessionJSON]] originally created with [[Session.toJSON]]. This function
- *  is preferred to [[Session.fromJSON]], as this function ensures react client hydration works correctly
- * @param json
- * @returns
- */
-export function useSessionJSON(json: SessionJSON): Session {
-  // this hook doesn't need to trigger any updates
-  // the hooks that return impressions will do the right thing if the cache changes
-  const jsonRef = useRef(json);
-  const sessionRef = useRef<Session | undefined>(undefined);
-
-  if (json != jsonRef.current || sessionRef.current == undefined) {
-    sessionRef.current = Session.fromJSON(json);
-  }
-
-  useEffect(() => {
-    // this no-ops if called multiple times
-    sessionRef.current?.setHydrationComplete();
-  });
-
-  return sessionRef.current as Session;
 }
 
 function makeBackingStore(
@@ -1078,13 +1046,13 @@ function makeBackingStore(
       backingStore = (
         makeCustomStore ??
         (() => {
-          log.warn("no makeCustomStore");
+          _log.warn("no makeCustomStore");
           return new NoOpStore();
         })
       )();
       break;
     default:
-      log.error("unknown cache type");
+      _log.error("unknown cache type");
       const _: never = cacheType;
       _;
       backingStore = new NoOpStore();
@@ -1103,23 +1071,25 @@ function makeBackingStore(
   } catch {}
 
   if (storageWorks) return backingStore;
-  log.warn(
+  _log.warn(
     `The requested storage "${cacheType}" did not work. Falling back to in-memory store`
   );
   return new _InMemoryStore();
 }
 
-function sessionArgsMatch(
-  args1: Partial<SessionArgs> | undefined,
-  args2: Partial<SessionArgs> | undefined
+/** @internal */
+export function _argsMatch(
+  args1: Record<string, unknown> | undefined,
+  args2: Record<string, unknown> | undefined
 ): boolean {
   return (
     JSON.stringify(args1, sortReplacer) == JSON.stringify(args2, sortReplacer)
   );
 }
 
-function flagsFromImpression(
-  impression?: ImpressionImpl
+/** @internal */
+export function _flagsFromImpression(
+  impression?: _ImpressionImpl
 ): Flags<FeatureNames> | undefined {
   if (impression == undefined) return undefined;
 
@@ -1136,13 +1106,14 @@ function flagsFromImpression(
   return flags as Flags<FeatureNames>;
 }
 
-function getCachedImpression(
+/** @internal */
+export function _getCachedImpression(
   session: Session,
   wireArgs: _WireArgs
 ): {
-  cachedImpression?: ImpressionImpl;
+  cachedImpression?: _ImpressionImpl;
   cachedFlags?: Flags<FeatureNames>;
-  metadata: Map<string, RequestMetadata>;
+  metadata: Map<string, _RequestMetadata>;
 } {
   const cache = session._.cache;
 
@@ -1158,7 +1129,7 @@ function getCachedImpression(
     wireOutputs: cachedOutputs,
   });
 
-  const cachedFlags = flagsFromImpression(cachedImpression);
+  const cachedFlags = _flagsFromImpression(cachedImpression);
 
   // register the SSE handler if necessary
   cache.maybeRegisterSSEHandler();
@@ -1170,22 +1141,12 @@ function getCachedImpression(
   };
 }
 
-function loadingImpression(session: Session): ImpressionImpl {
-  const impression = new ImpressionImpl({
-    impressionType: "loading",
-    sessionKeys: sessionKeys(session._.args),
-    wireArgs: {},
-    wireOutputs: {},
-  });
-  return impression;
-}
-
 function errorImpression(
   session: Session | undefined,
   reason: string,
   { wireArgs }: Pick<ImpressionJSON, "wireArgs">
-): ImpressionImpl {
-  const impression = new ImpressionImpl({
+): _ImpressionImpl {
+  const impression = new _ImpressionImpl({
     sessionKeys: session ? sessionKeys(session._.args) : ({} as SessionKeys),
     impressionType: "error",
     reason,
@@ -1223,7 +1184,7 @@ export type CommSnapshot = {
 };
 
 /**
- * A session converted to JSON. Used in conjunction with [[Session.toJSON]] and [[Session.fromJSON]]. These are useful to transfer a session across a JSON serialization boundary
+ * A session converted to JSON. Used in conjunction with [[useSessionJSON]] to transfer a session for SSR
  */
 export type SessionJSON = {
   sessionArgs: Partial<SessionArgs>;
@@ -1231,43 +1192,17 @@ export type SessionJSON = {
   cacheJson: Record<string, unknown>;
   commSnapshotJson: CommSnapshot;
   featureJson:
-    | (_RequestStoreEntry & { featureName: string; args: unknown })[]
+    | (_RequestStoreEntry & { featureName: string; strArgs: string })[]
     | undefined;
   activeVariants: ActiveVariant[];
 };
 
-/** very basic uuid generator (to minimize external dependencies) **/
-function uuidv4() {
-  let digits = "";
-  let ii = 0;
-  for (; digits.length < 32 && ii < 100; ii++)
-    digits += (Math.random() * 0xffffffff).toString(16).split(".")[0];
-
-  if (ii == 100) {
-    throw new Error("FATAL: failed to generate uuid");
-  }
-
-  return (
-    digits.slice(0, 8) +
-    "-" +
-    digits.slice(8, 12) +
-    "-" +
-    digits.slice(12, 16) +
-    "-" +
-    digits.slice(16, 20) +
-    "-" +
-    digits.slice(20, 32)
-  );
-}
-
 //#region caching
 
-let _flushCount = 0;
+/** @internal */
+export let _flushCount = 0;
 
-/**
- * @internal
- * Do not use
- */
+/** @internal */
 export type _BackingStore = {
   get(key: string): unknown;
   set(key: string, entry: unknown): void;
@@ -1286,34 +1221,30 @@ export type _BackingStore = {
  * need to be handled correctly.
  * Consider upgrading the cache version
  */
-type RequestMetadata = {
+export type _RequestMetadata = {
   origRender: "ssr" | "csr";
   lastRender: "ssr" | "csr";
-  hydratable: boolean;
   impressionCount: number;
 };
 
-/**
- * @internal
- * Do not use - only exported for testing
- */
+/** @internal */
 export type _RequestStoreEntry = {
   created: string;
   expires: string;
   value: unknown;
-} & RequestMetadata;
+} & _RequestMetadata;
 
 type RequestEntry = {
   created: Date;
   expires: Date;
   value: unknown;
-} & RequestMetadata;
+} & _RequestMetadata;
 
 type RequestInputEntry = {
   created?: Date;
   expires: Date;
   value: unknown;
-} & Partial<RequestMetadata>;
+} & Partial<_RequestMetadata>;
 
 class NoOpStore implements _BackingStore {
   get(): undefined {
@@ -1359,7 +1290,7 @@ class LocalStorageStore implements _BackingStore {
       const jsonEntry = JSON.parse(stringEntry);
       return jsonEntry;
     } catch (e) {
-      log.warn(
+      _log.warn(
         "failed to deserialize from cache. Error = " + JSON.stringify(e)
       );
       window.localStorage.removeItem(_key);
@@ -1417,10 +1348,7 @@ class LocalStorageStore implements _BackingStore {
   }
 }
 
-/**
- * @internal
- * Exported for testing
- */
+/** @internal */
 export class _InMemoryStore implements _BackingStore {
   // store as strings and not raw values to mimic local storage
   // this also prevents any truth equality based on references
@@ -1465,9 +1393,7 @@ export class _InMemoryStore implements _BackingStore {
   }
 }
 
-/**
- * @internal
- */
+/** @internal */
 export type CacheOptions = {
   /**
    * The maximum amount of time to cache feature values.
@@ -1511,7 +1437,7 @@ export type CacheOptions = {
   makeCustomStore?: () => _BackingStore;
 };
 
-const cacheVersion = 1;
+const cacheVersion = 3;
 
 const sseInfoKey = "sseInfo";
 const cacheInfoKey = "cacheInfo";
@@ -1535,22 +1461,24 @@ type CacheInfo = {
 // maps args to cache store entries
 type FeatureEntry = Record<string, _RequestStoreEntry>;
 
-/** @internal only exported for testing */
+/** @internal */
 export const _eventSourceInfo: {
   source: EventSource | undefined;
   cache: _Cache | undefined;
   forceUpdateFns: Set<() => void>;
 } = { source: undefined, cache: undefined, forceUpdateFns: new Set() };
 
-function registerForceUpdateFn(fn: () => void) {
+/** @internal */
+export function _registerForceUpdateFn(fn: () => void) {
   _eventSourceInfo.forceUpdateFns.add(fn);
 }
 
-function unRegisterForceUpdateFn(fn: () => void) {
+/** @internal */
+export function _unRegisterForceUpdateFn(fn: () => void) {
   _eventSourceInfo.forceUpdateFns.delete(fn);
 }
 
-function forceHookUpdates() {
+function runUpdateFns() {
   for (const fn of _eventSourceInfo.forceUpdateFns) fn();
 }
 
@@ -1583,10 +1511,7 @@ function registerEventSource(cache: _Cache) {
   return true;
 }
 
-/**
- * @internal
- * Do not use - only exported for testing
- */
+/** @internal */
 export class _Cache {
   sessionArgs: Partial<SessionArgs> | undefined;
   backingStore: _BackingStore;
@@ -1623,9 +1548,9 @@ export class _Cache {
       return false;
     return (
       this.sessionArgs != undefined &&
-      !misc.ssr &&
+      !_misc.ssr &&
       !this.backingStore.dontStore() &&
-      (this.useServerSentEvents || isCausalRegistered())
+      (this.useServerSentEvents || _isCausalRegistered())
     );
   }
 
@@ -1724,15 +1649,13 @@ export class _Cache {
       origRender: _origRender,
       lastRender: _lastRender,
       impressionCount: _impressionCount,
-      hydratable: _hydratable,
       ...rest
     } = requestEntry;
 
     const createdString = (created ?? new Date()).toISOString();
     const expiresString = expires.toISOString();
-    const origRender = _origRender ?? (misc.ssr ? "ssr" : "csr");
+    const origRender = _origRender ?? (_misc.ssr ? "ssr" : "csr");
     const lastRender = _lastRender ?? origRender;
-    const hydratable = _hydratable ?? false;
     const impressionCount = _impressionCount ?? 1;
 
     const newRequestStoreEntry: _RequestStoreEntry = {
@@ -1742,7 +1665,6 @@ export class _Cache {
       origRender,
       lastRender,
       impressionCount,
-      hydratable,
     };
 
     featureEntry[argsKey] = newRequestStoreEntry;
@@ -1764,7 +1686,7 @@ export class _Cache {
    * @returns undefined if no cache info is available
    */
   touchCacheInfo(): { cacheInfo: CacheInfo | undefined; isNew: boolean } {
-    log.debug(5, "testAndTouchSession");
+    _log.debug(5, "testAndTouchSession");
     if (this.backingStore.dontStore())
       return { cacheInfo: undefined, isNew: true };
 
@@ -1797,7 +1719,7 @@ export class _Cache {
       }
 
       if (cacheExpired) {
-        log.debug(1, "session expired");
+        _log.debug(1, "session expired");
         cacheExpired = true;
 
         // should never happen, but be extra cautious to avoid render loop
@@ -1811,10 +1733,10 @@ export class _Cache {
     if (
       !this.backingStore.isEmpty() &&
       oldCacheInfo?.sessionArgs &&
-      !sessionArgsMatch(oldCacheInfo.sessionArgs, curSessionArgs)
+      !_argsMatch(oldCacheInfo.sessionArgs, curSessionArgs)
     ) {
       argsMismatch = true;
-      log.debug(1, "session args changes, deleting values");
+      _log.debug(1, "session args changes, deleting values");
       this.deleteAll(true);
     }
 
@@ -1880,13 +1802,13 @@ export class _Cache {
         wireOutputs: _WireOutputs;
 
         /** the key is feature.args */
-        metadata: Map<string, RequestMetadata>;
+        metadata: Map<string, _RequestMetadata>;
       }
     | undefined {
     if (!this.touchCacheInfo().cacheInfo) return undefined;
 
     const outputs: _WireOutputs = {};
-    const metadata: Map<string, RequestMetadata> = new Map();
+    const metadata: Map<string, _RequestMetadata> = new Map();
 
     let allCached = true;
 
@@ -1917,12 +1839,11 @@ export class _Cache {
             origRender: entry.origRender,
             lastRender: entry.lastRender,
             impressionCount: entry.impressionCount,
-            hydratable: entry.hydratable,
           });
 
           this.addCacheHit(featureName);
         } catch {
-          log.warn("unexpected exception retrieving from cache");
+          _log.warn("unexpected exception retrieving from cache");
           allCached = false;
           break;
         }
@@ -1992,7 +1913,7 @@ export class _Cache {
           this.setFeature(name, entry.args, undefined);
       }
     } catch (e) {
-      log.warn(
+      _log.warn(
         "unexpected error analyzing cache - deleting entry. error was " +
           JSON.stringify(e)
       );
@@ -2009,7 +1930,7 @@ export class _Cache {
     _flushCount++;
     this.deleteAll(false);
     this.set(sseInfoKey, mevt.data);
-    forceHookUpdates();
+    runUpdateFns();
   }
 
   // handle the "flushfeatures" sse.
@@ -2020,7 +1941,7 @@ export class _Cache {
     const mevt: MessageEvent = evt as MessageEvent;
     _flushCount++;
     this.sseMaybeDel(mevt.data, null);
-    forceHookUpdates();
+    runUpdateFns();
   }
 
   sseHello(evt: Event) {
@@ -2041,7 +1962,7 @@ export class _Cache {
     const prevFlushTime = safeFlushTime(this.get(sseInfoKey));
     if (prevFlushTime == undefined || newFlushTime > prevFlushTime) {
       this.deleteAll(true);
-      forceHookUpdates();
+      runUpdateFns();
     }
     this.set(sseInfoKey, mevt.data);
   }
@@ -2065,7 +1986,7 @@ function makeBaseUrl(ssr: boolean): string {
   if (ssr) {
     url = process.env.CAUSAL_ISERVER;
     if (url == undefined) {
-      log.warn(
+      _log.warn(
         "SSR impression server environment variable not set, defaulting to 'http://localhost:3004/iserver'. " +
           "Please set CAUSAL_ISERVER"
       );
@@ -2080,7 +2001,7 @@ function makeBaseUrl(ssr: boolean): string {
       process.env.CAUSAL_BROWSER_ISERVER;
 
     if (url == undefined) {
-      log.warn(
+      _log.warn(
         "Browser impression server environment variable not set, defaulting to http://localhost:3004/iserver " +
           "Please set one of: NEXT_PUBLIC_CAUSAL_BROWSER_ISERVER, VAGRANT_CAUSAL_BROWSER_ISERVER, RAZZLE_CAUSAL_BROWSER_ISERVER, CAUSAL_BROWSER_ISERVER"
       );
@@ -2090,30 +2011,21 @@ function makeBaseUrl(ssr: boolean): string {
 
   url = normalizeUrl(url);
 
-  if (misc.ssr && url != lastLoggedUrl) {
+  if (_misc.ssr && url != lastLoggedUrl) {
     // it's easy to see the url on the client, but a bit harder in SSR output
-    log.info("impression server url: ", url);
+    _log.info("impression server url: ", url);
     lastLoggedUrl = url;
   }
   return url;
 }
 
-/**
- * @internal
- * Do not use - only exported for testing
- */
+/** @internal */
 type _LogFn = (message: string, ...optionalParams: unknown[]) => void;
 
-/**
- * @internal
- * Do not use - only exported for testing
- */
+/** @internal */
 export type _FetchUrl = string;
 
-/**
- * @internal
- * Do not use - only exported for testing
- */
+/** @internal */
 export type _FetchRequestInit = {
   method?: "GET" | "POST";
   body?: string;
@@ -2123,7 +2035,7 @@ export type _FetchRequestInit = {
 };
 
 // eslint-disable-next-line
-function sortReplacer(_: any, value: any) {
+export function sortReplacer(_: any, value: any) {
   if (!(value instanceof Object) || value instanceof Array) return value;
 
   return (
@@ -2143,10 +2055,7 @@ function getArgsAsKey(wireArg: unknown): string {
     : JSON.stringify(wireArg ?? {}, sortReplacer);
 }
 
-/**
- * @internal
- * Do not use - only exported for testing
- */
+/** @internal */
 export type _FetchResponse = {
   status: number;
   text(): Promise<string>;
@@ -2230,6 +2139,23 @@ export type CausalOptions = {
   logIServerCommErrors?: boolean;
 
   /**
+   * The default page type for your site.
+   *
+   * SSR: Server side rendered
+   * CSR: Client side rendered
+   * SSG: Static site generation
+   *
+   * This impact the default render strategy used by Causal.
+   *
+   * The default is "SSG".
+   *
+   * If you know your site is SSR or CSR, you can set this to optimize performance.
+   * You can change this on a per page basis by using [[OptionsContext]]
+   * Please visit https://tech.causallabs.io/docs/howto/hydration for more details
+   */
+  defaultPageType?: "SSR" | "SSG" | "CSR";
+
+  /**
    * @deprecated
    * Callback called whenever the active variants are updated. This is intended for reporting information to other
    * systems. It should *not* be used as an input for any display or logic on your site.
@@ -2248,10 +2174,7 @@ export type CausalOptions = {
   }) => void;
 };
 
-/**
- * @internal
- * This API may change at any point
- */
+/** @internal */
 export type CausalDebugOptions = {
   /**
    * By default Causal use console.log to log info
@@ -2293,6 +2216,11 @@ export type CausalDebugOptions = {
    * Global cacheing options
    */
   cacheOptions?: CacheOptions;
+
+  /**
+   * This for internal testing. Do not use
+   */
+  testLogs?: { log: string; data: unknown }[];
 };
 
 // eslint-disable-next-line
@@ -2318,19 +2246,13 @@ const defaultLog: {
   },
 };
 
-let log = {
+/** @internal */
+export let _log = {
   ...defaultLog,
 };
 
-/**
- * @internal
- * Do not use - only exported for testing
- */
-export function _getLog() {
-  return log;
-}
-
 type MiscOptions = Required<Pick<CausalDebugOptions, "ssr">> &
+  Pick<CausalDebugOptions, "testLogs"> &
   Required<
     Pick<
       CausalOptions,
@@ -2338,6 +2260,7 @@ type MiscOptions = Required<Pick<CausalDebugOptions, "ssr">> &
       | "logIServerCommErrors"
       | "onUpdateActiveVariants"
       | "onImpression"
+      | "defaultPageType"
     >
   >;
 
@@ -2347,6 +2270,8 @@ const defaultMisc: MiscOptions = {
   ssr: defaultSSR,
   logIServerDetails: false,
   logIServerCommErrors: true,
+  defaultPageType: "SSG",
+  testLogs: undefined,
   onUpdateActiveVariants: () => {
     // noop
   },
@@ -2354,9 +2279,12 @@ const defaultMisc: MiscOptions = {
     // noop
   },
 };
-const misc: MiscOptions = { ...defaultMisc };
 
-function isCausalRegistered() {
+/** @internal */
+export const _misc: MiscOptions = { ...defaultMisc };
+
+/** @internal */
+export function _isCausalRegistered() {
   try {
     if (typeof window == "undefined") return false;
     return window.localStorage?.getItem(causalRegisteredKey) == "true" ?? false;
@@ -2372,7 +2300,7 @@ const defaultCacheOptions: Required<CacheOptions> = {
   ssrCacheType: "inMemory",
   csrCacheType: "localStorage",
   makeCustomStore: () => {
-    log.warn("no custom store function");
+    _log.warn("no custom store function");
     return new NoOpStore();
   },
 };
@@ -2393,7 +2321,7 @@ const defaultNetwork = {
     url: _FetchUrl,
     init?: _FetchRequestInit
   ): Promise<_FetchResponse> => {
-    log.debug(2, "defaultFetch");
+    _log.debug(2, "defaultFetch");
     return fetch(url, init);
   },
   newEvtSource:
@@ -2421,32 +2349,34 @@ export function initCausal(
   debugOptions?: CausalDebugOptions
 ) {
   let baseUrl = options?.baseUrl ? normalizeUrl(options?.baseUrl) : undefined;
-  misc.ssr = debugOptions?.ssr ?? defaultSSR;
-  misc.logIServerDetails = options?.logIServerDetails ?? false;
-  misc.logIServerCommErrors = options?.logIServerCommErrors ?? true;
-  misc.onUpdateActiveVariants =
+  _misc.ssr = debugOptions?.ssr ?? defaultSSR;
+  _misc.logIServerDetails = options?.logIServerDetails ?? false;
+  _misc.logIServerCommErrors = options?.logIServerCommErrors ?? true;
+  _misc.defaultPageType = options?.defaultPageType ?? "SSG";
+  _misc.testLogs = debugOptions?.testLogs;
+  _misc.onUpdateActiveVariants =
     options?.onUpdateActiveVariants ??
     (() => {
       // noop
     });
-  misc.onImpression =
+  _misc.onImpression =
     options?.onImpression ??
     (() => {
       // noop
     });
 
-  log = { ...defaultLog };
-  log.info = debugOptions?.logInfo ?? defaultLog.info;
-  log.warn = debugOptions?.logWarn ?? defaultLog.warn;
-  log.error = debugOptions?.logError ?? defaultLog.error;
+  _log = { ...defaultLog };
+  _log.info = debugOptions?.logInfo ?? defaultLog.info;
+  _log.warn = debugOptions?.logWarn ?? defaultLog.warn;
+  _log.error = debugOptions?.logError ?? defaultLog.error;
 
   const logLevel = options?.logLevel ?? ["info", "warn", "error"];
   const noOp = () => {
     undefined;
   };
-  if (!logLevel.includes("info")) log.info = noOp;
-  if (!logLevel.includes("warn")) log.warn = noOp;
-  if (!logLevel.includes("error")) log.error = noOp;
+  if (!logLevel.includes("info")) _log.info = noOp;
+  if (!logLevel.includes("warn")) _log.warn = noOp;
+  if (!logLevel.includes("error")) _log.error = noOp;
 
   network = {
     timeoutMs: options?.timeoutMs ?? defaultNetwork.timeoutMs,
@@ -2596,20 +2526,19 @@ export type ImpressionJSON = {
 /**
  * Convert a [[ImpressionJSON]] back to an impression.
  */
-
 export function toImpression<T extends FeatureNames>(
   impressionJson: ImpressionJSON
 ): ImpressionType<Query<T>> {
   return toImpressionImpl(impressionJson) as Impression<T>;
 }
 
-export function toImpressionImpl({
+function toImpressionImpl({
   impressionType,
   sessionKeys,
   wireArgs,
   wireOutputs: outputs,
-}: ImpressionJSON): ImpressionImpl {
-  const impression = new ImpressionImpl({
+}: ImpressionJSON): _ImpressionImpl {
+  const impression = new _ImpressionImpl({
     impressionType,
     sessionKeys,
     wireArgs,
@@ -2640,10 +2569,7 @@ type WireVariant = {
   };
 };
 
-/**
- * @internal
- * Do not use - only exported for testing
- */
+/** @internal */
 export type _IServerResponse = _WireOutputs & {
   _flags: _WireFlags;
   _variants?: WireVariant[];
@@ -2668,16 +2594,16 @@ function cleanWireArgs(wireArgs: _WireArgs | undefined): _WireArgs {
 }
 
 function logIServerIssue(message: string, ...optionalParams: unknown[]): void {
-  if (misc.logIServerCommErrors) log.error(message, ...optionalParams);
-  else if (misc.logIServerDetails) log.info(message, ...optionalParams);
+  if (_misc.logIServerCommErrors) _log.error(message, ...optionalParams);
+  else if (_misc.logIServerDetails) _log.info(message, ...optionalParams);
 }
 
 function logIServerIssueAsWarn(
   message: string,
   ...optionalParams: unknown[]
 ): void {
-  if (misc.logIServerCommErrors) log.warn(message, ...optionalParams);
-  else if (misc.logIServerDetails) log.info(message, ...optionalParams);
+  if (_misc.logIServerCommErrors) _log.warn(message, ...optionalParams);
+  else if (_misc.logIServerDetails) _log.info(message, ...optionalParams);
 }
 
 /**
@@ -2701,7 +2627,7 @@ async function iserverFetch({
   implicitArgs: ImplicitArgs;
   wireArgs?: _WireArgs;
 }): Promise<{
-  impression?: ImpressionImpl;
+  impression?: _ImpressionImpl;
   flags?: _WireFlags;
   error?: ErrorTypes;
   warning?: ErrorTypes;
@@ -2711,21 +2637,8 @@ async function iserverFetch({
 }> {
   const fetchOptions = [...options];
 
-  if (misc.logIServerDetails) log.info("iserver fetch START ------");
+  if (_misc.logIServerDetails) _log.info("iserver fetch START ------");
   try {
-    if (
-      misc.ssr &&
-      implicitArgs.ipAddress == undefined &&
-      // stifle this message in development because the dev version compiles the page on
-      // every render which prints this message each time
-      process.env.NODE_ENV != "development"
-    ) {
-      log.warn(
-        "Looks like you are rendering server side (SSR), did you forget to pass incomingMessage? " +
-          "This message can also appear during a static build of a CSR page, in which case you can ignore it."
-      );
-    }
-
     let result: _FetchResponse | undefined = undefined;
     wireArgs = cleanWireArgs(wireArgs);
     const featuresRequested = Object.keys(wireArgs ?? {}).length;
@@ -2752,14 +2665,14 @@ async function iserverFetch({
         headers,
       };
 
-      if (misc.logIServerDetails) {
-        log.info("fetch from url:", url);
-        log.info("fetch with payload:", payload);
+      if (_misc.logIServerDetails) {
+        _log.info("fetch from url:", url);
+        _log.info("fetch with payload:", payload);
       }
 
       result = await network.fetch(url, payload);
 
-      if (misc.logIServerDetails) log.info("fetch() result:", result);
+      if (_misc.logIServerDetails) _log.info("fetch() result:", result);
 
       if (result == undefined) {
         const msg = "Received undefined or null fetch() result ";
@@ -2825,7 +2738,8 @@ async function iserverFetch({
     try {
       response = (await result.json()) as _IServerResponse | undefined;
 
-      if (misc.logIServerDetails) log.info("fetch...json() response", response);
+      if (_misc.logIServerDetails)
+        _log.info("fetch...json() response", response);
 
       if (response == undefined || Object.keys(response).length == 0) {
         const errMsg =
@@ -2872,7 +2786,7 @@ async function iserverFetch({
       ...wireOutputs
     } = response;
 
-    const impression = new ImpressionImpl({
+    const impression = new _ImpressionImpl({
       impressionType: "real",
       sessionKeys: sessionKeys(wireOutputs.session as SessionArgs),
       wireArgs,
@@ -2949,7 +2863,7 @@ async function iserverFetch({
       featuresReceived: 0,
     };
   } finally {
-    if (misc.logIServerDetails) log.info("iserver fetch END ------");
+    if (_misc.logIServerDetails) _log.info("iserver fetch END ------");
   }
 }
 
@@ -2976,14 +2890,16 @@ function sortVariants(variants: Variant[]) {
 }
 
 /**
+ * @internal
+ *
  * Sends a beacon to the iserver to indicate an impression was viewed from cache
  * This will also update the impression count in the cache
  *
  * @returns true if an beacon was sent, false if the beacon was suppressed
  */
-function sendImpressionBeacon(
+export function _sendImpressionBeacon(
   session: Session,
-  impression: ImpressionImpl,
+  impression: _ImpressionImpl,
   impressionId: string
 ): void {
   const outputs = impression._.json.wireOutputs;
@@ -3005,7 +2921,7 @@ function sendImpressionBeacon(
     ) {
       const entry = session._.cache.getFeature(featureName, args);
       if (entry) {
-        entry.lastRender = misc.ssr ? "ssr" : "csr";
+        entry.lastRender = _misc.ssr ? "ssr" : "csr";
         count += 1;
         impressionIdMap[featureName] = {
           impression: output?._impressionId,
@@ -3013,7 +2929,7 @@ function sendImpressionBeacon(
         };
         entry.impressionCount += 1;
         session._.cache.setFeature(featureName, args, entry);
-      } else log.warn("entry is null, ignoring");
+      } else _log.warn("entry is null, ignoring");
     }
   });
 
@@ -3025,11 +2941,12 @@ function sendImpressionBeacon(
   }
 }
 
-function updateSessionVariants(
+/** @internal */
+export function _updateSessionVariants(
   session: Session,
   iserverVariants: ActiveVariant[] | undefined,
   impressionId: string | undefined,
-  impression: ImpressionImpl | undefined
+  impression: _ImpressionImpl | undefined
 ): void {
   if (impressionId == undefined) {
     // no need to update active variants on a cache fill
@@ -3151,8 +3068,8 @@ function updateSessionVariants(
   session._.cache.set(activeVariantsKey, updatedVariants);
   session._.cache.set(requestedFeaturesKey, updatedFeatures);
 
-  misc.onUpdateActiveVariants(newVariants);
-  misc.onImpression({
+  _misc.onUpdateActiveVariants(newVariants);
+  _misc.onImpression({
     newVariants,
     allVariants: updatedVariants,
     newFeatures,
@@ -3160,11 +3077,12 @@ function updateSessionVariants(
   });
 }
 
-function updateImpressionIds(
-  impression: ImpressionImpl,
+/** @internal */
+export function _updateImpressionIds(
+  impression: _ImpressionImpl,
   newImpressionId: string,
   wireArgs: _WireArgs
-): ImpressionImpl {
+): _ImpressionImpl {
   const newOutputs: Record<string, unknown> = {};
   for (const _k of Object.keys(wireArgs ?? {}) as (keyof _WireArgs)[]) {
     const k = _k as FeatureNames;
@@ -3190,7 +3108,7 @@ function updateImpressionIds(
     sessionKeys: impression.sessionKeys,
     wireArgs,
     wireOutputs: newOutputs,
-  }) as ImpressionImpl;
+  }) as _ImpressionImpl;
 }
 
 /**
@@ -3235,50 +3153,6 @@ export type ErrorTypes =
   | ErrorUnknown
   | ErrorField;
 
-type ImpressionNone = {
-  state: "none";
-  impression: ImpressionImpl;
-};
-
-type ImpressionCached = {
-  state: "loadingCached" | "cached";
-  newImpressionId: string;
-  cachedImpression: ImpressionImpl;
-  impression: ImpressionImpl;
-  metadata: Map<string, RequestMetadata>;
-};
-
-type ImpressionLoading = {
-  state: "loading";
-  impression: ImpressionImpl;
-};
-
-type ImpressionDone = {
-  state: "done";
-  impression: ImpressionImpl;
-};
-
-type ImpressionState =
-  | ImpressionNone
-  | ImpressionCached
-  | ImpressionLoading
-  | ImpressionDone;
-
-/**
- * A React context to hold a [[Session]]
- * This uses the standard [React context](https://reactjs.org/docs/context.html) provider pattern
- */
-export const SessionContext = createContext<Session | undefined>(undefined);
-
-/**
- * A React hook to get the current [[Session]] in the [[SessionContext]]
- * @returns [[Session]]
- */
-export function useSession(): Session | undefined {
-  const session = useContext(SessionContext);
-  return session;
-}
-
 type ImpressionNakedType<I> = I extends Impression<infer T> ? T : never;
 
 /**
@@ -3295,11 +3169,20 @@ export function isImpressionType<
 >(impression: I, toTestType: T): impression is Impression<T> & I {
   if (toTestType == undefined) return false;
   return (
-    (impression as unknown as ImpressionImpl)._.json.wireArgs[
+    (impression as unknown as _ImpressionImpl)._.json.wireArgs[
       toTestType as FeatureNames
     ] != undefined
   );
 }
+
+export type Feature<T extends FeatureNames> = Exclude<
+  Impression<FeatureNames>[T],
+  undefined
+> & {
+  featureName: T;
+  impressionId: string;
+  impression: Impression<T>;
+};
 
 type FeatureExNakedType<F> = F extends Feature<infer T> ? T : never;
 
@@ -3314,10 +3197,149 @@ type FeatureExNakedType<F> = F extends Feature<infer T> ? T : never;
 export function isFeatureType<
   F extends Feature<FeatureNames>,
   T extends FeatureExNakedType<F>
->(feature: F | undefined, toTestType: T): feature is Feature<T> & F {
+>(feature: F | undefined | "OFF", toTestType: T): feature is Feature<T> & F {
   if (toTestType == undefined) return false;
   if (feature == undefined) return false;
+  if (feature == "OFF") return false;
   return feature.featureName == toTestType;
+}
+
+//#region utility
+
+/** 
+ * @internal
+ * very basic uuid generator (to minimize external dependencies) 
+ **/
+export function uuidv4() {
+  let digits = "";
+  let ii = 0;
+  for (; digits.length < 32 && ii < 100; ii++)
+    digits += (Math.random() * 0xffffffff).toString(16).split(".")[0];
+
+  if (ii == 100) {
+    throw new Error("FATAL: failed to generate uuid");
+  }
+
+  return (
+    digits.slice(0, 8) +
+    "-" +
+    digits.slice(8, 12) +
+    "-" +
+    digits.slice(12, 16) +
+    "-" +
+    digits.slice(16, 20) +
+    "-" +
+    digits.slice(20, 32)
+  );
+}
+
+/** @internal */
+export const maxDate = new Date(8640000000000000);
+
+/** @internal */
+export function makeFutureDate(secondsFromNow: number): Date {
+  return new Date(Date.now() + secondsFromNow * 1000);
+}
+
+/** @internal */
+export function addSeconds(date: Date, seconds: number): Date {
+  return new Date(date.valueOf() + seconds * 1000);
+}
+
+//#endregion
+/// TSBase// This is a FeatureDL automatically generated file. DO NOT DIRECTLY EDIT, your changes will not persist.
+// TSClient
+
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useReducer,
+  useRef,
+} from "react";
+
+/**
+ * Creates a session from transferred [[SessionJSON]] originally created with [[Session.toJSON]]. This hook ensures react client hydration works correctly with SSR.
+ * @param json
+ * @returns
+ */
+export function useSessionJSON(json: SessionJSON): Session {
+  // this hook doesn't need to trigger any updates
+  // the hooks that return impressions will do the right thing if the cache changes
+  const jsonRef = useRef(json);
+  const sessionRef = useRef<Session | undefined>(undefined);
+
+  if (json != jsonRef.current || sessionRef.current == undefined) {
+    sessionRef.current = Session.fromJSON(json);
+  }
+
+  useEffect(() => {
+    sessionRef.current?.setSsrTransferComplete();
+  }, []);
+
+  return sessionRef.current as Session;
+}
+
+/**
+ * A React context to hold Causal options that you want to change from the defaults
+ * This uses the standard [React context](https://reactjs.org/docs/context.html) provider pattern
+ */
+export const OptionContext = createContext<
+  Pick<CausalOptions, "defaultPageType"> | undefined
+>(undefined);
+
+/**
+ * A React context to hold a [[Session]]
+ * This uses the standard [React context](https://reactjs.org/docs/context.html) provider pattern
+ */
+export const SessionContext = createContext<Session | undefined>(undefined);
+
+/**
+ * A React hook to get the current [[Session]] in the [[SessionContext]]
+ * @returns [[Session]]
+ */
+export function useSession(): Session | undefined {
+  const session = useContext(SessionContext);
+  return session;
+}
+
+type ImpressionNone = {
+  state: "none";
+  impression: _ImpressionImpl;
+};
+
+type ImpressionCached = {
+  state: "loadingCached" | "cached";
+  newImpressionId: string;
+  cachedImpression: _ImpressionImpl;
+  impression: _ImpressionImpl;
+  metadata: Map<string, _RequestMetadata>;
+};
+
+type ImpressionLoading = {
+  state: "loading";
+  impression: _ImpressionImpl;
+};
+
+type ImpressionDone = {
+  state: "done";
+  impression: _ImpressionImpl;
+};
+
+type ImpressionState =
+  | ImpressionNone
+  | ImpressionCached
+  | ImpressionLoading
+  | ImpressionDone;
+
+function loadingImpression(session: Session): _ImpressionImpl {
+  const impression = new _ImpressionImpl({
+    impressionType: "loading",
+    sessionKeys: sessionKeys(session._.args),
+    wireArgs: {},
+    wireOutputs: {},
+  });
+  return impression;
 }
 
 /**
@@ -3347,6 +3369,10 @@ export function useImpression<Q extends Query<FeatureNames>>(
 
   // putting into a ref so hook always returns the same loading impression when loading
   const _loadingImpression = useRef(loadingImpression(session));
+
+  let useLoadingImpressionForCacheRead =
+    (useContext(OptionContext)?.defaultPageType ?? _misc.defaultPageType) ==
+      "SSG" && !_misc.ssr;
 
   const wireArgs = query?._.wireArgs as _WireArgs;
 
@@ -3384,7 +3410,7 @@ export function useImpression<Q extends Query<FeatureNames>>(
     );
   }
 
-  const sessionChanged = !sessionArgsMatch(
+  const sessionChanged = !_argsMatch(
     prevSession.current._.args,
     _session._.args
   );
@@ -3419,7 +3445,7 @@ export function useImpression<Q extends Query<FeatureNames>>(
 
   // get cached values
   if (query != undefined && impressionState.current.state == "none") {
-    const { cachedImpression, metadata } = getCachedImpression(
+    const { cachedImpression, metadata } = _getCachedImpression(
       session,
       wireArgs
     );
@@ -3431,31 +3457,41 @@ export function useImpression<Q extends Query<FeatureNames>>(
       hasChange = true;
       const newImpressionId = impressionId ?? uuidv4();
 
-      let useLoadingImpression = false;
-
-      if (session._.hydrating) {
-        // We did a cache transfer and are potentially hydrating an SSR render.
-        // We need to take care and make sure that the SSR and the hydration render identically,
+      if (session._.ssrTransfer) {
+        // We did an SSR cache transfer
+        // We need to take care and make sure that the server and client render identically,
         // otherwise we will get a hydration error from react
         // we do this by delaying the render of things that were not transferred for this render
-        let allHydratable = true;
-        for (const v of metadata.values()) {
-          if (!v.hydratable) {
-            allHydratable = false;
+        let allFromSSR = true;
+
+        for (const [_wireName, _wireArgs] of Object.entries(wireArgs)) {
+          let matched = false;
+          for (const ssrKey of session._.ssrKeys) {
+            if (
+              _wireName == ssrKey.featureName &&
+              JSON.stringify(_wireArgs, sortReplacer) == ssrKey.strArgs
+            ) {
+              matched = true;
+              break;
+            }
+          }
+          if (!matched) {
+            allFromSSR = false;
             break;
           }
         }
-        useLoadingImpression = !allHydratable;
+
+        useLoadingImpressionForCacheRead = !allFromSSR;
       }
 
-      updateSessionVariants(
+      _updateSessionVariants(
         _session,
         undefined,
         newImpressionId,
         cachedImpression
       );
 
-      if (useLoadingImpression) {
+      if (useLoadingImpressionForCacheRead) {
         impressionState.current = {
           state: "loadingCached",
           newImpressionId,
@@ -3467,7 +3503,7 @@ export function useImpression<Q extends Query<FeatureNames>>(
         impressionState.current = {
           state: "cached",
           newImpressionId,
-          impression: updateImpressionIds(
+          impression: _updateImpressionIds(
             cachedImpression,
             newImpressionId,
             wireArgs
@@ -3481,10 +3517,10 @@ export function useImpression<Q extends Query<FeatureNames>>(
 
   // let QA refresh update this component
   useEffect(() => {
-    if (isCausalRegistered()) {
-      registerForceUpdateFn(forceUpdate);
+    if (_isCausalRegistered()) {
+      _registerForceUpdateFn(forceUpdate);
       return () => {
-        unRegisterForceUpdateFn(forceUpdate);
+        _unRegisterForceUpdateFn(forceUpdate);
       };
     }
     return undefined;
@@ -3492,12 +3528,12 @@ export function useImpression<Q extends Query<FeatureNames>>(
 
   // fetch results
   useEffect(() => {
-    log.debug(1, "useImpression fetch results effect");
+    _log.debug(1, "useImpression fetch results effect");
 
     async function request() {
       if (query != undefined) {
-        log.debug(1, "useImpression fetch results effect: request()");
-        log.debug(1, "request");
+        _log.debug(1, "useImpression fetch results effect: request()");
+        _log.debug(1, "request");
 
         const { impression, error } = await _session.requestImpression(
           query,
@@ -3506,7 +3542,7 @@ export function useImpression<Q extends Query<FeatureNames>>(
         requestFinishTS.current = new Date();
         impressionState.current = {
           state: "done",
-          impression: impression as unknown as ImpressionImpl,
+          impression: impression as unknown as _ImpressionImpl,
         };
         errorState.current = error;
         forceUpdate();
@@ -3534,7 +3570,7 @@ export function useImpression<Q extends Query<FeatureNames>>(
       impressionState.current = {
         state: "cached",
         newImpressionId,
-        impression: updateImpressionIds(
+        impression: _updateImpressionIds(
           cachedImpression,
           newImpressionId,
           wireArgs
@@ -3548,9 +3584,9 @@ export function useImpression<Q extends Query<FeatureNames>>(
 
   // send beacons for cached impressions
   useEffect(() => {
-    log.debug(1, "useImpression useEffect: cached");
+    _log.debug(1, "useImpression useEffect: cached");
     if (impressionState.current.state == "cached") {
-      sendImpressionBeacon(
+      _sendImpressionBeacon(
         _session,
         impressionState.current.cachedImpression,
         impressionState.current.newImpressionId
@@ -3568,7 +3604,7 @@ export function useImpression<Q extends Query<FeatureNames>>(
     impressionState.current.state == "loading" ||
     impressionState.current.state == "loadingCached";
 
-  log.debug(3, "useImpression returning. loading", loading);
+  _log.debug(3, "useImpression returning. loading", loading);
 
   if (hasChange && !firstTime.current) {
     forceUpdate();
@@ -3577,7 +3613,11 @@ export function useImpression<Q extends Query<FeatureNames>>(
   firstTime.current = false;
   if (loading) session._.loadingImpressionsCount += 1;
 
-  const flags = flagsFromImpression(impressionState.current.impression);
+  const flags = _flagsFromImpression(impressionState.current.impression);
+
+  if (_misc.testLogs != undefined && loading)
+    _misc.testLogs.push({ log: "loadingImpression", data: undefined });
+
   return {
     loading,
     impression: impressionState.current
@@ -3586,15 +3626,6 @@ export function useImpression<Q extends Query<FeatureNames>>(
     error: errorState.current,
   };
 }
-
-type Feature<T extends FeatureNames> = Exclude<
-  Impression<FeatureNames>[T],
-  undefined
-> & {
-  featureName: T;
-  impressionId: string;
-  impression: Impression<T>;
-};
 
 /**
  Converts Feature<A|B|C> into Feature<A> | Feature<B> | Feature<C>
@@ -3607,33 +3638,37 @@ type DistributeFeature<F> = F extends Feature<infer T>
 
 /**
  * React hook to get a single feature.
- *  As compared to [[useImpression]] this only retrieves a single feature.
- *  If the request is loading it will returned undefined.
+ *  As compared to [[useImpression]] this only retrieves a single feature.<br/>
+ *  If the feature is off it will return `"OFF"`.<br/>
+ *  If the request is loading it will returned undefined.<br/>
+ *  If the feature is loaded, it will return the feature.<br/>
  *  It does NOT return an error state, so you need to be happy with the control values on error.
  */
 export function useFeature<T extends FeatureNamesNoArgs>(
   featureReq: T | undefined,
   impressionId?: string,
   session?: Session
-): DistributeFeature<Feature<T>> | undefined;
+): DistributeFeature<Feature<T>> | undefined | "OFF";
 
 /**
  * React hook to get a single feature.
- *  As compared to [[useImpression]] this only retrieves a single feature.
- *  If the request is loading it will returned undefined.
+ *  As compared to [[useImpression]] this only retrieves a single feature.<br/>
+ *  If the feature is off it will return `"OFF"`.<br/>
+ *  If the request is loading it will returned undefined.<br/>
+ *  If the feature is loaded, it will return the feature.<br/>
  *  It does NOT return an error state, so you need to be happy with the control values on error.
  */
 export function useFeature<T extends FeatureNames>(
   featureReq: Query<T> | undefined,
   impressionId?: string,
   session?: Session
-): DistributeFeature<Feature<T>> | undefined;
+): DistributeFeature<Feature<T>> | undefined | "OFF";
 
 export function useFeature<T extends FeatureNames>(
   featureReq: T | Query<T> | undefined,
   impressionId?: string,
   session?: Session
-): DistributeFeature<Feature<T>> | undefined {
+): DistributeFeature<Feature<T>> | undefined | "OFF" {
   let featureName: T | undefined;
   let query: Query<T> | undefined;
   if (featureReq == undefined) {
@@ -3648,26 +3683,33 @@ export function useFeature<T extends FeatureNames>(
     query = featureReq;
     const keys = [...Object.keys(query._.wireArgs ?? {})];
     featureName = keys[0] as T | undefined;
-    if (keys.length == 0) log.warn("no feature requested for useFeature");
+    if (keys.length == 0) _log.warn("no feature requested for useFeature");
     if (keys.length > 1) {
-      log.warn(
+      _log.warn(
         `More than on feature requested from useFeature, using ${featureName}. (all = ${keys}) `
       );
     }
   }
 
-  const { impression } = useImpression(query, impressionId, session);
-  const impressionImpl = impression as ImpressionImpl;
+  const { impression, flags } = useImpression(query, impressionId, session);
+
+  if (flags?.[featureName as unknown as keyof Flags<T>] === false) return "OFF";
+
+  const impressionImpl = impression as _ImpressionImpl;
   if (impression == undefined) return undefined;
   const feature = impression[featureName as unknown as keyof Impression<T>];
   if (feature == undefined) return undefined;
 
   const featureOutputs =
     impressionImpl._.json.wireOutputs[featureName as FeatureNames];
+
+  if (featureOutputs == "OFF") {
+    _log.warn("should have already returned OFF");
+    return "OFF";
+  }
+
   const actualImpresionId =
-    featureOutputs == "OFF" || featureOutputs == "UNKNOWN"
-      ? undefined
-      : featureOutputs?._impressionId;
+    featureOutputs == "UNKNOWN" ? undefined : featureOutputs?._impressionId;
 
   return {
     ...(feature as unknown as Omit<
@@ -3681,17 +3723,4 @@ export function useFeature<T extends FeatureNames>(
 }
 
 //#endregion
-
-//#region utility
-
-const maxDate = new Date(8640000000000000);
-
-function makeFutureDate(secondsFromNow: number): Date {
-  return new Date(Date.now() + secondsFromNow * 1000);
-}
-
-function addSeconds(date: Date, seconds: number): Date {
-  return new Date(date.valueOf() + seconds * 1000);
-}
-
-//#endregion
+///TSClient

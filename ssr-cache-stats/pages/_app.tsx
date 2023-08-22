@@ -3,6 +3,7 @@ import App from "next/app";
 import { useRouter } from "next/router";
 import { v4 as uuidv4 } from "uuid";
 import {
+  initCausal,
   qb,
   Session,
   SessionContext,
@@ -12,6 +13,8 @@ import {
 } from "../causal";
 import "../styles/globals.css";
 import { getOrMakeDeviceId, MyPageContext, RequestIdContext } from "../utils";
+
+initCausal({ defaultPageType: "SSR" });
 
 type MyAppRenderProps = AppProps & {
   sessionJson: SessionJSON;
