@@ -10,12 +10,12 @@ import {
 import { RatingWidget } from "../components/RatingWidget";
 import { getOrGenDeviceId, products } from "../utils";
 
-type FeaturesToQuery = SelectFeatures<"RatingBox">;
-
 type SSRProps = {
-  product: typeof products[keyof typeof products];
+  product: (typeof products)[keyof typeof products];
   json: ImpressionJSON;
 };
+
+type FeaturesToQuery = SelectFeatures<"RatingBox">;
 
 export async function getServerSideProps(
   context: GetServerSidePropsContext
