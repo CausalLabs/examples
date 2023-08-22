@@ -1,11 +1,6 @@
 import { useRouter } from "next/router";
 import { useState } from "react";
-import {
-  queryBuilder,
-  Session,
-  SessionContext,
-  useImpression,
-} from "../causal";
+import { qb, Session, SessionContext, useFeature } from "../causal";
 import { RatingWidget } from "../components/RatingWidget";
 import { getOrGenDeviceId, products } from "../utils";
 
@@ -34,34 +29,23 @@ export function ProductInfo({
   const [rating, setRating] = useState(0);
   const router = useRouter();
 
-  const query = queryBuilder().getRatingBox({ product: product.name });
-  const { impression, flags, error } = useImpression(query);
-
-  // check for errors
-  if (error) {
-    console.log(
-      "There is no impression server running yet, but it still works! " +
-        "Causal is resilient to network and backend outages " +
-        "because the defaults are compiled in 😃."
-    );
-  }
+  const ratingBox = useFeature(qb().getRatingBox({ product: product.name }));
 
   return (
     <div className="center">
       <h1>{product.name}</h1>
       <img src={product.url} alt="product image" />
 
-      {/* test feature flag */}
-      {flags?.RatingBox && (
+      {ratingBox != "OFF" && (
         <>
           {/* use impression data */}
-          <h3>{impression.RatingBox?.callToAction}</h3>
+          <h3>{ratingBox?.callToAction}</h3>
           <RatingWidget
             curRating={rating}
             onSetRating={(newRating) => {
               setRating(newRating);
               // wire up events
-              impression.RatingBox?.signalRating({ stars: newRating });
+              ratingBox?.signalRating({ stars: newRating });
             }}
           />
           <a href={router.route + "?pid=" + product.next}>Rate Another</a>
