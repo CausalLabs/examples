@@ -3628,9 +3628,9 @@ export function useImpression<Q extends Query<FeatureNames>>(
 }
 
 /**
- Converts Feature<A|B|C> into Feature<A> | Feature<B> | Feature<C>
+ Converts Feature&lt;A|B|C&gt; into Feature&lt;A&gt; | Feature&lt;B&gt; | Feature&lt;C&gt;
  */
-type DistributeFeature<F> = F extends Feature<infer T>
+export type DistributeFeature<F> = F extends Feature<infer T>
   ? T extends unknown
     ? Feature<T>
     : never
