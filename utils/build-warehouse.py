@@ -104,7 +104,6 @@ def execute_redshift_statement(
 
 
 def run_query(query, database, s3_output, client):
-
     response = client.start_query_execution(
         QueryString=query,
         QueryExecutionContext={"Database": database},
@@ -127,7 +126,6 @@ def find_s3_root(filename):
 
 
 if __name__ == "__main__":
-
     client = get_athena_client()
 
     parser = argparse.ArgumentParser(
@@ -235,7 +233,7 @@ if __name__ == "__main__":
 
     # Athena can only process one statement at a time. Causal outputs the
     # ---- separator between statements
-    ddl = open(args.sql_file).read().split("----")
+    ddl = open(args.sql_file).read().split("--ANOTHER_SQL_STATEMENT--")
     for stmt in ddl:
         if len(stmt) == 0 or stmt.isspace():
             continue

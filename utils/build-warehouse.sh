@@ -47,8 +47,8 @@ aws athena start-query-execution --query-string "create database if not exists $
 TMP_DIR=$(mktemp -d)
 
 # split file into separate statements
-# causal uses ---- to separate statements in the file
-csplit --elide-empty-files --prefix $TMP_DIR/causalsplit --suffix-format='%05d.sql' $CAUSAL_SQL /----/ '{*}'
+# causal uses --ANOTHER_SQL_STATEMENT-- to separate statements in the file
+csplit --elide-empty-files --prefix $TMP_DIR/causalsplit --suffix-format='%05d.sql' $CAUSAL_SQL /--ANOTHER_SQL_STATEMENT--/ '{*}'
 
 # remove any cruft
 sed -i -r -e '/^\s*$/d' -e '/^----$/d' $TMP_DIR/*.sql
