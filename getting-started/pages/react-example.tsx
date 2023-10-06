@@ -1,8 +1,10 @@
 import { useRouter } from "next/router";
-import { useState } from "react";
-import { qb, Session, SessionContext, useFeature } from "../causal";
+import { useEffect, useState } from "react";
+import { initCausal, qb, Session, SessionContext, useFeature } from "../causal";
 import { RatingWidget } from "../components/RatingWidget";
 import { getOrGenDeviceId, products } from "../utils";
+
+initCausal({defaultPageType:"SSR"});
 
 export default function Page() {
   const router = useRouter();
@@ -30,6 +32,16 @@ export function ProductInfo({
   const router = useRouter();
 
   const ratingBox = useFeature(qb().getRatingBox({ product: product.name }));
+
+  console.log("outside effect" , ratingBox);
+
+  useEffect(() => {
+    if (ratingBox == "OFF") console.log("rating box is off");
+    else if (ratingBox == undefined) console.log("rating box is undefined");
+    else {
+      console.log("rating box call to action", ratingBox.callToAction);
+    }
+  }, [ratingBox]);
 
   return (
     <div className="center">
