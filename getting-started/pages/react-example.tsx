@@ -32,16 +32,22 @@ export function ProductInfo({
   const router = useRouter();
 
   const ratingBox = useFeature(qb().getRatingBox({ product: product.name }));
-
-  console.log("outside effect" , ratingBox);
+  const feature2 = useFeature(qb().getFeature2({exampleArg: "foo"}));
 
   useEffect(() => {
     if (ratingBox == "OFF") console.log("rating box is off");
     else if (ratingBox == undefined) console.log("rating box is undefined");
     else {
-      console.log("rating box call to action", ratingBox.callToAction);
+      console.log("rating box", ratingBox);
     }
-  }, [ratingBox]);
+
+    if (feature2 == "OFF") console.log("feature2 is off");
+    else if (feature2 == undefined) console.log("feature2 is undefined");
+    else {
+      console.log("feature2", feature2);
+    }
+
+  }, [ratingBox, feature2]);
 
   return (
     <div className="center">

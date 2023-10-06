@@ -3,11 +3,14 @@ import {
   Session,
   SessionContext,
   SessionJSON,
+  initCausal,
   qb,
   useSessionJSON,
 } from "../causal";
 import { getOrGenDeviceId, products } from "../utils";
 import { ProductInfo } from "./react-example";
+
+initCausal({defaultPageType:"SSR"});
 
 export async function getServerSideProps(
   context: GetServerSidePropsContext
@@ -17,7 +20,7 @@ export async function getServerSideProps(
 
   const deviceId = getOrGenDeviceId(context);
   const session = Session.fromDeviceId(deviceId, context.req);
-  await session.requestCacheFill(qb().getRatingBox({ product: product.name }));
+  await session.requestCacheFill(qb().getRatingBox({ product: product.name }).getFeature2({exampleArg: "foo"}));
 
   return { props: { sessionJson: session.toJSON(), product } };
 }
