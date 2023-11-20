@@ -21,8 +21,6 @@ export default function Page() {
     if (key?.startsWith("_causal_")) localStorage.removeItem(key);
   }
 
-  window.localStorage.setItem("_causal_registered", "true");
-
   const webtoolsUrl =
     process.env.NEXT_PUBLIC_WEBTOOLS ?? "https://tools.causallabs.io";
   const redirectTo = `${webtoolsUrl}/QA?persistentId=${persistentId}`;
