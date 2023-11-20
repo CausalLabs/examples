@@ -1,4 +1,5 @@
 // This is a FeatureDL automatically generated file. DO NOT DIRECTLY EDIT, your changes will not persist.
+
 import fetch from "cross-fetch";
 
 class FeatureBase {
@@ -14,7 +15,8 @@ class FeatureBase {
   } = {};
 }
 
-// TSBase
+// TSBase - start
+
 //#region  parameterized
 
 /* eslint-disable */
@@ -227,7 +229,11 @@ export class Session extends SessionEvents {
   }
 
 //#endregion
-///////////////////////////////////////////////////////////////////////////////
+
+
+// TSBase nogen
+
+  // TSBase nogen
 
   /** @internal */
   _: {
@@ -483,11 +489,13 @@ export class Session extends SessionEvents {
       }
 
       session._.ssrTransfer = ssrTransfer;
-      if (ssrTransfer)
-        session._.ssrKeys = featuresJson.map(({ featureName, strArgs }) => {
-          return { featureName, strArgs };
-        });
-      else session._.ssrKeys = [];
+      if (ssrTransfer) {
+        session._.ssrKeys = featuresJson
+          .filter(({ featureName }) => featureName != "session")
+          .map(({ featureName, strArgs }) => {
+            return { featureName, strArgs };
+          });
+      } else session._.ssrKeys = [];
     }
 
     return session;
@@ -713,9 +721,7 @@ type WireFeatureCommon = {
 };
 
 type AllFeatureClasses = {
-  [F in keyof typeof allFeatureTypes]: InstanceType<
-    (typeof allFeatureTypes)[F]
-  >;
+  [F in keyof typeof allFeatureTypes]: InstanceType<typeof allFeatureTypes[F]>;
 };
 
 type AFeatureOutput<F extends FeatureNames> = {
@@ -736,7 +742,7 @@ type FeatureOutputs = {
 export type _WireArgs = Partial<QueryArgs<FeatureNames>>;
 
 /** @internal */
-export type _WireOutputs = { session?: SessionArgs } & Partial<{
+export type _WireOutputs = { session?: SessionResponse } & Partial<{
   [P in FeatureNames]:
     | (FeatureOutputs[P] & WireFeatureCommon)
     | "OFF"
@@ -764,9 +770,7 @@ function signal(
 // to tell the TS compiler that ImpressionImp really does
 // potentially have each of the feature classes as a member
 type ImpressionBaseType = Partial<{
-  [F in keyof typeof allFeatureTypes]: InstanceType<
-    (typeof allFeatureTypes)[F]
-  >;
+  [F in keyof typeof allFeatureTypes]: InstanceType<typeof allFeatureTypes[F]>;
 }> &
   SessionEvents;
 
@@ -802,10 +806,9 @@ export class _ImpressionImpl extends (SessionEvents as ImpressionBase) {
 
     for (const featureName of Object.keys(wireArgs ?? {}) as (
       | FeatureNames
-      | "Session"
       | "session"
     )[]) {
-      if (featureName == "Session" || featureName == "session") continue;
+      if (featureName == "session") continue;
       const output = wireOutputs[featureName];
 
       let shouldCreateFeature: boolean;
@@ -969,6 +972,7 @@ async function requestImpression<Q extends Query<FeatureNames>>(
     activeVariants,
     featuresRequested,
     featuresReceived,
+    registered,
   } = await iserverFetch({
     options: fetchOptions,
     impressionId,
@@ -977,7 +981,11 @@ async function requestImpression<Q extends Query<FeatureNames>>(
     wireArgs: wireArgs,
   });
 
-  cache.maybeRegisterSSEHandler();
+  if (registered) {
+    session._.cache.set(causalRegisteredKey, "true");
+  } else {
+    session._.cache.del(causalRegisteredKey);
+  }
 
   session._.commSnapshot.fetches += 1;
   session._.commSnapshot.featuresRequested += featuresRequested;
@@ -1004,6 +1012,9 @@ async function requestImpression<Q extends Query<FeatureNames>>(
       impression.toJSON().wireOutputs,
       impressionId == undefined
     );
+
+    cache.maybeRegisterSSEHandler();
+
     return {
       impression: impression as unknown as ImpressionType<Q>,
       flags: _flagsFromImpression(impression) as unknown as FlagsType<Q>, // cast needed for older version of TS
@@ -1313,7 +1324,7 @@ class LocalStorageStore implements _BackingStore {
       const key = localStorage.key(ii);
       if (
         key?.startsWith(LocalStorageStore.prefix) &&
-        key != causalRegisteredKey
+        key != causalForceNoRegisterKey
       ) {
         const entry = this.get(key, false);
         if (filter == undefined || entry == undefined || filter(entry))
@@ -1439,13 +1450,13 @@ export type CacheOptions = {
 
 const cacheVersion = 3;
 
-const sseInfoKey = "sseInfo";
+const lastFlushKey = "lastFlush";
 const cacheInfoKey = "cacheInfo";
 const flagsKey = "flags";
 const activeVariantsKey = "activeVariants";
 const requestedFeaturesKey = "activeFeatures";
-
-const causalRegisteredKey = "_causal_registered";
+const causalRegisteredKey = "registered";
+const causalForceNoRegisterKey = "forceNoRegister";
 
 // features have no prefix in the cache
 // non features are prefix with this
@@ -1482,34 +1493,10 @@ function runUpdateFns() {
   for (const fn of _eventSourceInfo.forceUpdateFns) fn();
 }
 
-function registerEventSource(cache: _Cache) {
-  if (_eventSourceInfo.cache == cache && _eventSourceInfo.source != undefined) {
-    // already registered
-    return;
-  }
-
-  // close previous one
-  if (_eventSourceInfo.source != undefined) {
-    _eventSourceInfo.source.close();
-    _eventSourceInfo.cache = undefined;
-    _eventSourceInfo.source = undefined;
-  }
-
-  if (cache.sessionArgs == undefined || network.newEvtSource == undefined) {
-    // nothing to do
-    return;
-  }
-
-  const url = sseUrl(cache.sessionArgs);
-  _eventSourceInfo.cache = cache;
-
-  const source = network.newEvtSource(url);
-  _eventSourceInfo.source = source;
-  source.addEventListener("flushcache", cache.sseFlushCache.bind(cache));
-  source.addEventListener("flushfeatures", cache.sseFlushFeatures.bind(cache));
-  source.addEventListener("hello", cache.sseHello.bind(cache));
-  return true;
-}
+type SessionResponse = SessionArgs & {
+  lastFlushTime?: number;
+  startTime?: number;
+};
 
 /** @internal */
 export class _Cache {
@@ -1543,23 +1530,54 @@ export class _Cache {
     this.isNew = this.touchCacheInfo().isNew;
   }
 
-  shouldRegisterSSEHandler(): boolean {
-    if (_eventSourceInfo.cache == this && _eventSourceInfo.source != undefined)
+  isCausalRegistered() {
+    try {
+      const forceNoRegister = this.get(causalForceNoRegisterKey);
+      if (forceNoRegister == "true" || forceNoRegister == true) return false;
+
+      const registered = this.get(causalRegisteredKey);
+      return registered == "true";
+    } catch {
       return false;
-    return (
-      this.sessionArgs != undefined &&
-      !_misc.ssr &&
-      !this.backingStore.dontStore() &&
-      (this.useServerSentEvents || _isCausalRegistered())
-    );
+    }
   }
 
-  maybeRegisterSSEHandler(): boolean {
-    if (this.shouldRegisterSSEHandler()) {
-      registerEventSource(this);
-      return true;
+  maybeRegisterSSEHandler() {
+    // already registered
+    if (_eventSourceInfo.cache == this) return;
+
+    // close previous one
+    if (_eventSourceInfo.source != undefined) {
+      _eventSourceInfo.source.close();
+      _eventSourceInfo.cache = undefined;
+      _eventSourceInfo.source = undefined;
     }
-    return false;
+
+    if (this.sessionArgs == undefined) return;
+    if (network.newEvtSource == undefined) return;
+    if (_misc.ssr) return;
+    if (this.backingStore.dontStore()) return;
+    
+    if (!this.isCausalRegistered() && !this.useServerSentEvents) return;
+
+    const sessionEntry = this.getFeature("session", this.sessionArgs);
+
+    if (sessionEntry == undefined) {
+      // we need to get a features response (or a cached feature response) before we can register
+      return;
+    }
+
+    const sessionResponse = (sessionEntry.value =
+      sessionEntry.value as SessionResponse);
+
+    const url = sseUrl(sessionResponse);
+    _eventSourceInfo.cache = this;
+
+    const source = network.newEvtSource(url);
+    _eventSourceInfo.source = source;
+    source.addEventListener("flushcache", this.sseFlushCache.bind(this));
+    source.addEventListener("flushfeatures", this.sseFlushFeatures.bind(this));
+    source.addEventListener("hello", this.sseFlushCache.bind(this));
   }
 
   get(key: string): unknown {
@@ -1567,6 +1585,10 @@ export class _Cache {
   }
   set(key: string, value: unknown) {
     this.backingStore.set(nonFeaturePrefix + key, value);
+  }
+
+  del(key: string) {
+    this.backingStore.del(nonFeaturePrefix + key);
   }
 
   getFeature(
@@ -1868,17 +1890,16 @@ export class _Cache {
       _WireOutputs[keyof _WireOutputs]
     ][]) {
       if (featureName == "session") {
-        if (this.get(sseInfoKey) == undefined) {
-          // older version of the iserver didn't send the last flush time
-          // in that case use the session start time
-          // will re-render too often in that case, but only for QA registered users
-          const lastFlushTime = (v as any)?.startTime; // eslint-disable-line
-          const startTime = (v as any)?.startTime; // eslint-disable-line
-          const sseInfo = lastFlushTime ?? startTime;
-          if (sseInfo != undefined) this.set(sseInfoKey, sseInfo);
-        }
-        this.setFeature(featureName, this.sessionArgs, {
-          value: v,
+        // older version of the iserver didn't send the last flush time
+        // in that case use the session start time
+        // will re-render too often in that case, but only for QA registered users
+        const sessionResponse = v as SessionResponse;
+        const lastFlushTime = sessionResponse?.lastFlushTime;
+        const startTime = sessionResponse?.startTime;
+        const sseInfo = lastFlushTime ?? startTime;
+        this.set(lastFlushKey, sseInfo);
+        this.setFeature("session", this.sessionArgs, {
+          value: sessionResponse,
           expires: nextExpiry,
         });
       } else {
@@ -1896,40 +1917,53 @@ export class _Cache {
   }
 
   //#region server sent events
-  sseMaybeDel(name: string, createdBeforeDate: string | null) {
+  sseMaybeDel(featuresName: string, createdBeforeDate: string | null) {
     if (this.backingStore.dontStore()) return;
 
+    const featuresNamesArr = featuresName.split(" ");
+
     if (!createdBeforeDate) {
-      this.backingStore.del(name);
+      for (const featureName of featuresNamesArr)
+        this.backingStore.del(featureName);
       return;
     }
 
     try {
       const createdBefore = new Date(createdBeforeDate);
-      const entries = this.getFeatures(name);
-      if (entries == undefined) return;
-      for (const entry of entries) {
-        if (entry.created < createdBefore)
-          this.setFeature(name, entry.args, undefined);
+
+      for (const featureName of featuresNamesArr) {
+        const entries = this.getFeatures(featureName);
+        if (entries == undefined) return;
+        for (const entry of entries) {
+          if (entry.created < createdBefore)
+            this.setFeature(featureName, entry.args, undefined);
+        }
       }
     } catch (e) {
       _log.warn(
         "unexpected error analyzing cache - deleting entry. error was " +
           JSON.stringify(e)
       );
-      this.backingStore.del(name);
+      for (const featureName of featuresNamesArr) {
+        this.backingStore.del(featureName);
+      }
     }
   }
 
   // handle the "flushcache" sse.
-  // flush the entire cache. The cache version is sent in the data.
+  // flush the entire cache if the flush time doesn't match
   sseFlushCache(evt: Event) {
     if (this.backingStore.dontStore()) return;
 
     const mevt: MessageEvent = evt as MessageEvent;
+    const newFlushTime = safeFlushTime(mevt.data);
+    const prevFlushTime = safeFlushTime(this.get(lastFlushKey));
+
+    if (prevFlushTime != undefined && newFlushTime == prevFlushTime) return;
+
     _flushCount++;
     this.deleteAll(false);
-    this.set(sseInfoKey, mevt.data);
+    this.set(lastFlushKey, mevt.data);
     runUpdateFns();
   }
 
@@ -1943,29 +1977,16 @@ export class _Cache {
     this.sseMaybeDel(mevt.data, null);
     runUpdateFns();
   }
+}
 
-  sseHello(evt: Event) {
-    if (this.backingStore.dontStore()) return;
-
-    function safeFlushTime(raw: unknown): number {
-      if (typeof raw == "number") return raw;
-      if (typeof raw == "string") {
-        const num = parseInt(raw);
-        if (isNaN(num)) return 0;
-        return num;
-      }
-      return 0;
-    }
-
-    const mevt: MessageEvent = evt as MessageEvent;
-    const newFlushTime = safeFlushTime(mevt.data);
-    const prevFlushTime = safeFlushTime(this.get(sseInfoKey));
-    if (prevFlushTime == undefined || newFlushTime > prevFlushTime) {
-      this.deleteAll(true);
-      runUpdateFns();
-    }
-    this.set(sseInfoKey, mevt.data);
+function safeFlushTime(raw: unknown): number {
+  if (typeof raw == "number") return raw;
+  if (typeof raw == "string") {
+    const num = parseInt(raw);
+    if (isNaN(num)) return 0;
+    return num;
   }
+  return 0;
 }
 
 //#endregion
@@ -2283,16 +2304,6 @@ const defaultMisc: MiscOptions = {
 /** @internal */
 export const _misc: MiscOptions = { ...defaultMisc };
 
-/** @internal */
-export function _isCausalRegistered() {
-  try {
-    if (typeof window == "undefined") return false;
-    return window.localStorage?.getItem(causalRegisteredKey) == "true" ?? false;
-  } catch {
-    return false;
-  }
-}
-
 const defaultCacheOptions: Required<CacheOptions> = {
   outputExpirySeconds: 60 * 60 * 24 * 365 * 100, // 100 years (so will expire with the session)
   useServerSentEvents: false,
@@ -2574,6 +2585,7 @@ export type _IServerResponse = _WireOutputs & {
   _flags: _WireFlags;
   _variants?: WireVariant[];
   errors?: Partial<Record<FeatureNames, string>>;
+  registered: boolean;
 };
 
 // Currently only one kind of fetch option now, do we want to get the complete set of flags
@@ -2634,6 +2646,7 @@ async function iserverFetch({
   activeVariants?: ActiveVariant[];
   featuresRequested: number;
   featuresReceived: number;
+  registered: boolean;
 }> {
   const fetchOptions = [...options];
 
@@ -2645,11 +2658,13 @@ async function iserverFetch({
 
     try {
       const body: {
+        version: 2;
         fetchOptions: FetchOptions[] | undefined;
         args: Partial<SessionArgs>;
         requests: _WireArgs | undefined;
         impressionId: string | undefined;
       } = {
+        version: 2,
         fetchOptions,
         args: { ...sessionArgs, ...implicitArgs },
         impressionId,
@@ -2693,6 +2708,7 @@ async function iserverFetch({
         error,
         featuresRequested,
         featuresReceived: 0,
+        registered: false,
       };
     }
 
@@ -2710,6 +2726,7 @@ async function iserverFetch({
         error,
         featuresRequested,
         featuresReceived: 0,
+        registered: false,
       };
     } else if (result.status != 200) {
       let errMsg = `Impression server non 200. Result = ${result.status}.`;
@@ -2731,6 +2748,7 @@ async function iserverFetch({
         error,
         featuresReceived: 0,
         featuresRequested,
+        registered: false,
       };
     }
 
@@ -2759,6 +2777,7 @@ async function iserverFetch({
           error,
           featuresRequested,
           featuresReceived: 0,
+          registered: false,
         };
       }
     } catch (e) {
@@ -2776,6 +2795,7 @@ async function iserverFetch({
         error,
         featuresRequested,
         featuresReceived: 0,
+        registered: false,
       };
     }
 
@@ -2783,6 +2803,7 @@ async function iserverFetch({
       _flags: responseFlags,
       errors,
       _variants,
+      registered,
       ...wireOutputs
     } = response;
 
@@ -2845,6 +2866,7 @@ async function iserverFetch({
       activeVariants,
       featuresRequested,
       featuresReceived,
+      registered,
     };
   } catch (e) {
     const errMsg = "unexpected iserverFetch exception.";
@@ -2861,6 +2883,7 @@ async function iserverFetch({
       error,
       featuresRequested: 0,
       featuresReceived: 0,
+      registered: false,
     };
   } finally {
     if (_misc.logIServerDetails) _log.info("iserver fetch END ------");
@@ -3206,9 +3229,9 @@ export function isFeatureType<
 
 //#region utility
 
-/** 
+/**
  * @internal
- * very basic uuid generator (to minimize external dependencies) 
+ * very basic uuid generator (to minimize external dependencies)
  **/
 export function uuidv4() {
   let digits = "";
@@ -3247,8 +3270,13 @@ export function addSeconds(date: Date, seconds: number): Date {
 }
 
 //#endregion
-/// TSBase// This is a FeatureDL automatically generated file. DO NOT DIRECTLY EDIT, your changes will not persist.
-// TSClient
+
+// TSBase - end
+
+// This is a FeatureDL automatically generated file. DO NOT DIRECTLY EDIT, your changes will not persist.
+// TSClient - start
+
+// TSClient nogen 
 
 import {
   createContext,
@@ -3515,16 +3543,18 @@ export function useImpression<Q extends Query<FeatureNames>>(
     }
   }
 
+  const isCausalRegistered = session?._.cache.isCausalRegistered();
+
   // let QA refresh update this component
   useEffect(() => {
-    if (_isCausalRegistered()) {
+    if (isCausalRegistered) {
       _registerForceUpdateFn(forceUpdate);
       return () => {
         _unRegisterForceUpdateFn(forceUpdate);
       };
     }
     return undefined;
-  }, []);
+  }, [isCausalRegistered]);
 
   // fetch results
   useEffect(() => {
@@ -3723,4 +3753,6 @@ export function useFeature<T extends FeatureNames>(
 }
 
 //#endregion
-///TSClient
+
+// TSClient - end
+
