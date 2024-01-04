@@ -17,8 +17,8 @@ repositories {
 
 dependencies
 {
-    implementation 'io.causallabs:runtime:0.45.0'
-    iserver 'io.causallabs:iserver:0.45.0'
+    implementation 'io.causallabs:runtime:0.46.0'
+    iserver 'io.causallabs:iserver:0.46.0'
     testImplementation'org.testng:testng:7.4.0'
 }
 
